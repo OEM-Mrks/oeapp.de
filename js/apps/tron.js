@@ -2,8 +2,9 @@
    Lichtwand hinter sich her, wer eine Wand trifft, ist raus. Runde 1 gegen
    einen Gegner, danach zwei, ab Runde 3 drei. Die Gegner schauen voraus
    (wie viel Platz bleibt mir?) und schneiden dir gern den Weg ab.
-   Gelenkt wird nur mit links/rechts aus Sicht des Fahrers (wie im Cockpit),
-   das Spielfeld selbst steht still und ist ganz zu sehen. */
+   Gelenkt wird mit zwei Flächen: linke = abbiegen aus Sicht des Fahrers nach
+   links, rechte = nach rechts. Fährt das Rad nach unten, tauschen die beiden
+   still ihre Funktion, damit die linke Fläche auch dann zum linken Bildrand führt. */
 
 OE.register({
   id: "tron",
@@ -206,14 +207,6 @@ OE.register({
         g.fillStyle = k.col; g.fillRect(-C * 1.3, -C * 0.55, C * 1.9, C * 1.1);
         g.fillStyle = "#fff"; g.fillRect(C * 0.2, -C * 0.3, C * 0.45, C * 0.6);
         g.restore();
-        if (!k.cpu && state !== "over"){
-          // L/R neben dem eigenen Rad: zeigt, wohin die beiden Tasten gerade führen
-          const fs = Math.max(9, C * 1.5), off = C * 2.6, [lx, ly] = DIRS[(k.d + 3) % 4], [rx, ry] = DIRS[(k.d + 1) % 4];
-          g.font = `600 ${fs}px "IBM Plex Mono", monospace`; g.textAlign = "center"; g.textBaseline = "middle";
-          g.globalAlpha = 0.7; g.fillStyle = k.col;
-          g.fillText("L", x + lx * off, y + ly * off); g.fillText("R", x + rx * off, y + ry * off);
-          g.globalAlpha = 1;
-        }
       }
       // Trümmer
       g.globalCompositeOperation = "lighter";
@@ -234,7 +227,9 @@ OE.register({
 
     function overlay(html){ ov.hidden = !html; if (html) ov.innerHTML = html; }
 
-    /* ---------- Steuerung: nur links und rechts, immer aus Sicht des Rads ---------- */
+    /* ---------- Steuerung: zwei Flächen ---------- */
+    // side: -1 = linke Fläche/Taste, 1 = rechte; bei Fahrt nach unten vertauscht
+    const press = side => steerRel(bikes[0].d === 2 ? -side : side);
     function steerRel(turn){
       if (state !== "running"){ begin(); return; }
       const me = bikes[0];
@@ -252,14 +247,13 @@ OE.register({
       state = "count"; endT = 0; lastCount = 0; overlay(null);
     }
 
-    // Handy: linke Bildhälfte = links, rechte = rechts; wischen nach links/rechts geht auch.
-    // Links/rechts gilt aus Sicht des Fahrers, auch wenn das Rad gerade nach unten fährt.
+    // Handy: linke oder rechte Bildhälfte antippen, wirkt wie die beiden Tasten
     let sx = 0, down = false;
     cv.addEventListener("pointerdown", e => {
       down = true; sx = e.clientX; cv.setPointerCapture(e.pointerId);
       if (state !== "running"){ begin(); down = false; return; }
       const r = cv.getBoundingClientRect();
-      steerRel(e.clientX - r.left < r.width / 2 ? -1 : 1);   // sofort beim Berühren, nicht erst beim Loslassen
+      press(e.clientX - r.left < r.width / 2 ? -1 : 1);   // sofort beim Berühren, nicht erst beim Loslassen
     });
     cv.addEventListener("pointerup", () => { down = false; });
     ov.addEventListener("pointerup", () => { if (state !== "running") begin(); });
@@ -288,19 +282,19 @@ OE.register({
     const onResize = () => size();
     addEventListener("resize", onResize);
     ctx.buttons(pad, [
-      { label: "◀  links", key: "ArrowLeft" }, { label: "rechts  ▶", key: "ArrowRight" },
+      { label: "", key: "ArrowLeft", aria: "linke Taste" }, { label: "", key: "ArrowRight", aria: "rechte Taste" },
     ]);
     size();
     overlay(`<div class="big" style="color:#5ae8ff;letter-spacing:.5em">T R O N</div><div>Lichtrad-Duell · nicht in die Wände fahren</div>
-      <div class="dim">${ctx.touch ? "linke/rechte Bildhälfte oder ◀ ▶ = abbiegen · immer aus Sicht des Fahrers" : "← → = links/rechts abbiegen · immer aus Sicht des Fahrers"}</div>
+      <div class="dim">${ctx.touch ? "linke/rechte Fläche = abbiegen" : "← → = abbiegen"}</div>
       <div>${ctx.touch ? "tippen zum Start" : "ENTER = start"}</div>`);
 
     return {
       stop(){ removeEventListener("resize", onResize); },
       key(e){
         const k = e.key;
-        if (["ArrowLeft", "a", "A", "z", "Z"].includes(k)){ steerRel(-1); return true; }
-        if (["ArrowRight", "d", "D", "x", "X"].includes(k)){ steerRel(1); return true; }
+        if (["ArrowLeft", "a", "A", "z", "Z"].includes(k)){ press(-1); return true; }
+        if (["ArrowRight", "d", "D", "x", "X"].includes(k)){ press(1); return true; }
         if (k === "ArrowUp" || k === "ArrowDown") return true;
         if (k === "Enter" || k === " "){ begin(); return true; }
         if (k === "p" || k === "P"){
