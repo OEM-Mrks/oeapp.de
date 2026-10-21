@@ -7,6 +7,8 @@ alle "Systemdaten", Logs und Hacks sind gespielt.
 ## Mini-Apps
 
 Im Prompt den Namen eintippen, `apps` bzw. **F2** für die Auswahl, **ESC** zurück.
+„♪ musik“ in der Fußleiste schaltet Synthwave-Musik in den Spielen ein (`js/music.js`,
+live erzeugt, je Spiel ein eigener Track).
 
 | App        | Was                                                         |
 |------------|-------------------------------------------------------------|
@@ -15,7 +17,7 @@ Im Prompt den Namen eintippen, `apps` bzw. **F2** für die Auswahl, **ESC** zur�
 | `pong`     | Tischtennis gegen den Computer (`pong --2p` zu zweit)       |
 | `chomp`    | Labyrinth mit vier Geistern (Pac-Man-artig, eigener Code)   |
 | `tron`     | Lichtrad-Duell gegen 1–3 Computergegner (Tron, 1982)        |
-| `race`     | Pseudo-3D-Autorennen im Vektor-Look mit Checkpoints         |
+| `race`     | Pseudo-3D-Autorennen mit Checkpoints, Hupe (H), Polizei (C) |
 | `video`    | Videothek-Kasse von 1994 im DOS-Look: Verleih, Rückgabe, Bon   |
 | `swan`     | 108-Minuten-Countdown aus „Lost“ (`swan --fast` ab 4:00)    |
 | `atm`      | Atari Portfolio knackt den Geldautomaten (T2-Hommage)       |
@@ -28,6 +30,7 @@ Im Prompt den Namen eintippen, `apps` bzw. **F2** für die Auswahl, **ESC** zur�
 - `index.html` – Layout (Topbar, Log, Zitat-Box, Anzeigen, Bottombar)
 - `css/terminal.css` – der komplette Look
 - `js/core.js` – Boot, Log, Zitate, Shell-Prompt und App-Manager
+- `js/music.js` – Synthwave-Musik (WebAudio-Sequencer), hört auf das Ereignis `oe:app`
 - `js/apps/*.js` – eine Datei pro Mini-App
 - `fonts/` – IBM Plex Mono, lokal eingebunden (keine externen Requests)
 

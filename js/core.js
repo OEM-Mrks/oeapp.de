@@ -561,6 +561,7 @@ function runApp(id, args = []){
   setActiveSeg(app.id);
   addLine(fmt("OK", `exec <span class="path">/usr/local/oeapp/bin/${esc(app.id)}</span> <span class="dim">pid=${current.pid}</span>`));
   current.inst = app.start(ctx) || {};
+  dispatchEvent(new CustomEvent("oe:app", { detail: app.id }));   // z. B. für die Musik
   if (document.activeElement === $("#cli")) $("#cli").blur();
   resetZoom();
   return true;
@@ -573,6 +574,7 @@ function stopCurrent(){
   addLine(fmt("DBG", `process <span class="path">${esc(current.app.id)}</span> exited <span class="dim">pid=${current.pid} status=0</span>`));
   current = null;
   $("#app").innerHTML = "";
+  dispatchEvent(new CustomEvent("oe:app", { detail: null }));
 }
 
 function exitApp(){

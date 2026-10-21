@@ -230,6 +230,8 @@ OE.register({
     let gear = 1, rpm = 0.12;
     let best = +ctx.store.get("race.best", 0) || 0;
     let muted = !!ctx.store.get("race.mute", false);
+    let police = !!ctx.store.get("race.police", false);
+    let cop = null, caughtT = 0, squeal = 0, horn = false;   // Polizeiauto, Banner "angehalten", Quietschen 0..1, Hupe gedrückt
     const parts = [];   // Funken und Staub
 
     function reset(){
@@ -242,11 +244,13 @@ OE.register({
         const col = COLS[i % COLS.length], c3 = hex(col);
         return {
           z: (i + 1) * (LEN / 23), off: (ctx.rint(0, 2) - 1) * 0.62 + (Math.random() - 0.5) * 0.12,
-          speed: MAX * (0.25 + Math.random() * 0.4), ahead: undefined,
+          speed: MAX * (0.25 + Math.random() * 0.4), ahead: undefined, offT: null,
           look: { col, type: ctx.rint(0, 2), body: rgb(mix(c3, [0, 0, 0], 0.84)), cab: rgb(mix(c3, [0, 0, 0], 0.92)) },
           n: 0, t: 0, X: 0, Y: 0, S: 0, fog: 0,
         };
       });
+      cop = police ? { z: ((pos + PLAYER_Z - SEG * 90) % LEN + LEN) % LEN, off: 0, wait: 6 } : null;
+      caughtT = 0;
     }
     const PLAYER_LOOK = { col: C.bright, type: 0, body: "#06200d", cab: "#031207" };
 
@@ -255,29 +259,67 @@ OE.register({
 
     let barKey = "";
     function updBar(){
-      const key = best + "|" + muted;
+      const key = best + "|" + muted + "|" + police;
       if (key === barKey) return;
       barKey = key;
       bar.innerHTML = `<span>rekord <b>${best.toFixed(2)} km</b></span>
         <span data-mute style="cursor:pointer">ton <b>${muted ? "aus" : "an"}</b>${ctx.touch ? "" : " (M)"}</span>
-        <span class="right">${ctx.touch ? "▼ bremst · ⏯ pause" : "↑ gas · ↓ bremse · ← → lenken · P pause"}</span>`;
+        <span data-police style="cursor:pointer">polizei <b style="color:${police ? "#7ab8ff" : ""}">${police ? "an" : "aus"}</b>${ctx.touch ? "" : " (C)"}</span>
+        <span class="right">${ctx.touch ? "▼ bremst · HUP hupt · ⏯ pause" : "↑ gas · ↓ bremse · ← → lenken · H hupe · P pause"}</span>`;
     }
-    bar.addEventListener("click", e => { if (e.target.closest("[data-mute]")) toggleMute(); });
+    bar.addEventListener("click", e => {
+      if (e.target.closest("[data-mute]")) toggleMute();
+      if (e.target.closest("[data-police]")) togglePolice();
+    });
+    function togglePolice(){
+      police = !police; ctx.store.set("race.police", police);
+      if (police && !cop) cop = { z: ((pos + PLAYER_Z - SEG * 90) % LEN + LEN) % LEN, off: px, wait: 4 };
+      if (!police) cop = null;
+      updBar();
+    }
 
-    /* ---------- Motorgeräusch: ein Dauerton, Tonhöhe folgt der Drehzahl ---------- */
-    let ac = null, eng = null, audT = 0, quietT = 0;
+    /* ---------- Ton: Motor aus mehreren Schichten, Reifen, Hupe, Martinshorn ----------
+       Motor: Grundton (Säge) + halbe Frequenz (Rechteck) + Oberton, durch einen Tiefpass,
+       dazu gefiltertes Rauschen (Auspuff) und ein Zündtakt, der die Lautstärke pulsieren
+       lässt. Alles folgt Drehzahl und Gaspedal, mit etwas Zufall, damit es lebt. */
+    let ac = null, eng = null, audT = 0, quietT = 0, lastGear = 1, wob = 0, popT = 0;
     function audioInit(){
       if (ac || muted) return;
       try{
         const AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return;
         ac = new AC();
-        const o1 = ac.createOscillator(), o2 = ac.createOscillator(), sub = ac.createGain(), lp = ac.createBiquadFilter(), vol = ac.createGain();
-        o1.type = "sawtooth"; o2.type = "square"; o1.frequency.value = 45; o2.frequency.value = 22.5;
-        sub.gain.value = 0.4; lp.type = "lowpass"; lp.frequency.value = 400; lp.Q.value = 3; vol.gain.value = 0;
-        o1.connect(lp); o2.connect(sub); sub.connect(lp); lp.connect(vol); vol.connect(ac.destination);
-        o1.start(); o2.start();
-        eng = { o1, o2, lp, vol };
+        const o = (type, f) => { const x = ac.createOscillator(); x.type = type; x.frequency.value = f; x.start(); return x; };
+        const gn = v => { const x = ac.createGain(); x.gain.value = v; return x; };
+        const flt = (type, f, q = 1) => { const x = ac.createBiquadFilter(); x.type = type; x.frequency.value = f; x.Q.value = q; return x; };
+        const noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+        const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+        const noiseSrc = () => { const x = ac.createBufferSource(); x.buffer = noiseBuf; x.loop = true; x.start(); return x; };
+        const out = gn(1); out.connect(ac.destination);
+
+        // Motor
+        const o1 = o("sawtooth", 45), o2 = o("square", 22.5), o3 = o("triangle", 90);
+        const sub = gn(0.45), harm = gn(0.0), lp = flt("lowpass", 400, 3), pulse = gn(1), vol = gn(0);
+        o1.connect(lp); o2.connect(sub); sub.connect(lp); o3.connect(harm); harm.connect(lp);
+        lp.connect(pulse); pulse.connect(vol); vol.connect(out);
+        const fire = o("sine", 11), fireAmt = gn(0.0);   // Zündtakt: moduliert die Lautstärke
+        fire.connect(fireAmt); fireAmt.connect(pulse.gain);
+        const ex = noiseSrc(), exBp = flt("bandpass", 500, 1.2), exVol = gn(0);   // Auspuffrauschen
+        ex.connect(exBp); exBp.connect(exVol); exVol.connect(out);
+
+        // Reifen: schmalbandiges Rauschen, Tonhöhe wackelt
+        const ti = noiseSrc(), tiBp = flt("bandpass", 1700, 9), tiBp2 = flt("bandpass", 2300, 12), tiVol = gn(0);
+        ti.connect(tiBp); ti.connect(tiBp2); tiBp.connect(tiVol); tiBp2.connect(tiVol); tiVol.connect(out);
+
+        // Hupe: zwei Töne im Abstand einer Terz, leicht verzerrt
+        const h1 = o("square", 415), h2 = o("square", 523), hLp = flt("lowpass", 1800, 1), hVol = gn(0);
+        h1.connect(hLp); h2.connect(hLp); hLp.connect(hVol); hVol.connect(out);
+
+        // Martinshorn: Tatütata, Lautstärke nach Abstand
+        const sir = o("sawtooth", 466), sirLp = flt("lowpass", 1600, 1), sirVol = gn(0);
+        sir.connect(sirLp); sirLp.connect(sirVol); sirVol.connect(out);
+
+        eng = { o1, o2, o3, harm, lp, vol, fire, fireAmt, exBp, exVol, tiBp, tiBp2, tiVol, hVol, sir, sirVol, out };
       } catch(e){ ac = null; eng = null; }
     }
     function audioTick(dt){
@@ -286,19 +328,60 @@ OE.register({
       quietT = on ? 0 : quietT + dt;
       audT -= dt;
       if (audT > 0) return;
-      audT = 0.05;   // nicht jedes Bild neue Automationspunkte setzen
+      audT = 0.04;   // nicht jedes Bild neue Automationspunkte setzen
       try{
         if (on && ac.state === "suspended") ac.resume().catch(() => {});
         if (!on && quietT > 0.3 && ac.state === "running"){ ac.suspend().catch(() => {}); return; }
-        const t = ac.currentTime, f = 34 + rpm * 110 + gear * 5;
+        const t = ac.currentTime, ratio = speed / MAX;
+        // langsames Schwanken + kleines Zittern: kein Motor läuft wie ein Sinuston
+        wob += dt * (2 + rpm * 3);
+        const wobble = Math.sin(wob * 2.3) * 1.2 + Math.sin(wob * 5.1) * 0.6 + (Math.random() - 0.5) * 1.5;
+        const f = 34 + rpm * 110 + gear * 5 + wobble;
         eng.o1.frequency.setTargetAtTime(f, t, 0.05);
         eng.o2.frequency.setTargetAtTime(f / 2, t, 0.05);
-        eng.lp.frequency.setTargetAtTime(240 + rpm * 900 + (gasOn ? 350 : 0), t, 0.08);
+        eng.o3.frequency.setTargetAtTime(f * 2.01, t, 0.05);
+        eng.harm.gain.setTargetAtTime(gasOn ? 0.15 + rpm * 0.35 : 0.05, t, 0.1);          // bei Last mehr Obertöne
+        eng.fire.frequency.setTargetAtTime(f / 4, t, 0.05);
+        eng.fireAmt.gain.setTargetAtTime(gasOn ? 0.18 : 0.38, t, 0.1);                   // im Schiebebetrieb blubbert es
+        eng.lp.frequency.setTargetAtTime(220 + rpm * 950 + (gasOn ? 420 : 0), t, 0.08);
+        eng.exBp.frequency.setTargetAtTime(260 + rpm * 900, t, 0.08);
+        eng.exVol.gain.setTargetAtTime(on ? (gasOn ? 0.012 + rpm * 0.02 : 0.006) : 0, t, 0.08);
         eng.vol.gain.setTargetAtTime(on ? 0.016 + rpm * 0.014 : 0, t, on ? 0.08 : 0.03);
+
+        // Schalten: kurz Leistung weg, dann wieder da
+        if (gear > lastGear && state === "running"){
+          eng.vol.gain.setTargetAtTime(0.006, t, 0.02);
+          eng.vol.gain.setTargetAtTime(0.016 + rpm * 0.014, t + 0.09, 0.05);
+          sfx(120, 40, "sawtooth", 0.025);
+        }
+        lastGear = gear;
+        // Gas weg bei hoher Drehzahl: Fehlzündungen im Auspuff
+        popT -= 0.04;
+        if (!gasOn && rpm > 0.55 && state === "running" && popT <= 0 && Math.random() < 0.25){
+          popT = 0.15 + Math.random() * 0.3;
+          sfx(70 + Math.random() * 60, 25, "square", 0.03);
+        }
+
+        // Reifen
+        const sq = on ? squeal : 0;
+        eng.tiVol.gain.setTargetAtTime(sq * 0.05, t, sq > 0.05 ? 0.05 : 0.12);
+        eng.tiBp.frequency.setTargetAtTime(1500 + Math.sin(wob * 9) * 250 + ratio * 300, t, 0.03);
+        eng.tiBp2.frequency.setTargetAtTime(2100 + Math.sin(wob * 13) * 300, t, 0.03);
+
+        // Hupe
+        eng.hVol.gain.setTargetAtTime(horn && on ? 0.05 : 0, t, 0.015);
+
+        // Martinshorn: je näher, desto lauter; Ton wechselt alle 0,65 s
+        let sv = 0;
+        if (cop && on){
+          const back = copGap();
+          sv = back < SEG * 140 ? 0.035 * Math.pow(1 - back / (SEG * 140), 1.5) + 0.004 : 0;
+          eng.sir.frequency.setValueAtTime((clock / 0.65 | 0) % 2 ? 622 : 466, t);
+        }
+        eng.sirVol.gain.setTargetAtTime(sv, t, 0.1);
       } catch(e){}
     }
     function audioClose(){
-      try{ if (eng){ eng.o1.stop(); eng.o2.stop(); } } catch(e){}
       try{ if (ac) ac.close(); } catch(e){}
       ac = null; eng = null;
     }
@@ -307,6 +390,9 @@ OE.register({
       if (!muted) audioInit();
       updBar();
     }
+
+    // Abstand der Polizei hinter dem eigenen Auto (Streckeneinheiten)
+    const copGap = () => cop ? (((pos + PLAYER_Z) - cop.z) % LEN + LEN) % LEN : Infinity;
 
     // Gänge: Anteil der Höchstgeschwindigkeit, ab dem hochgeschaltet ist
     const GEARS = [0, 0.16, 0.33, 0.52, 0.74, 1.001];
@@ -364,6 +450,21 @@ OE.register({
       if (right) px += steer;
       px -= steer * ratio * seg.curve * 0.06;   // Fliehkraft in Kurven
       steerVis += (((right ? 1 : 0) - (left ? 1 : 0)) * Math.min(1, ratio * 2) - steerVis) * Math.min(1, dt * 8);
+      // Reifen quietschen: scharf lenken bei Tempo, enge Kurven, Vollbremsung
+      const sqT = clamp(Math.max(
+        (Math.abs(steerVis) - 0.55) * 2.2 * clamp((ratio - 0.4) * 2.5, 0, 1),
+        (Math.abs(seg.curve) * ratio - 2.6) * 0.45,
+        brake && ratio > 0.35 ? (ratio - 0.35) * 1.6 : 0), 0, 1) * (Math.abs(px) > 1 ? 0.2 : 1);
+      squeal += (sqT - squeal) * Math.min(1, dt * 10);
+      // Hupe: Auto vor dir auf deiner Spur wechselt die Spur
+      horn = k.has("h");
+      if (horn) for (const c of cars){
+        const gap = ((c.z - (pos + PLAYER_Z)) % LEN + LEN) % LEN;
+        if (gap < SEG * 30 && Math.abs(c.off - px) < 0.45 && c.offT == null){
+          c.offT = clamp(c.off + (c.off > px ? 0.62 : -0.62), -0.7, 0.7);
+          if (Math.abs(c.offT - c.off) < 0.3) c.offT = c.off > 0 ? c.off - 0.62 : c.off + 0.62;
+        }
+      }
 
       speed += (gas ? ACC : brake ? BRAKE : DECEL) * dt;
       const offroad = Math.abs(px) > 1;
@@ -391,6 +492,7 @@ OE.register({
       // Gegner bewegen, Überholen zählen, Auffahren
       for (const c of cars){
         c.z = (c.z + c.speed * dt) % LEN;
+        if (c.offT != null){ c.off += clamp(c.offT - c.off, -dt * 0.9, dt * 0.9); if (Math.abs(c.offT - c.off) < 0.01) c.offT = null; }
         const gap = ((c.z - (pos + PLAYER_Z)) % LEN + LEN) % LEN;
         const ahead = gap < LEN / 2;
         if (c.ahead === true && !ahead && gap > LEN - SEG * 30){ passed++; sfx(1400, 25, "square", 0.015); }
@@ -402,6 +504,24 @@ OE.register({
           if (hitCool <= 0){ crash(Math.min(1, hard * 2.5)); sfx(110, 220, "square", 0.06); }
         }
       }
+
+      // Polizei: knapp langsamer als Vollgas, holt aber jede Schwäche auf
+      if (cop){
+        if (cop.wait > 0) cop.wait -= dt;
+        else {
+          const back = copGap();
+          const want = back > SEG * 250 ? MAX * 1.15 : MAX * 0.95;
+          cop.z = (cop.z + want * dt) % LEN;
+          cop.off += (px - cop.off) * Math.min(1, dt * 1.5);
+          if (copGap() > LEN / 2){   // überholt = erwischt
+            caughtT = 2.4; time = Math.max(0, time - 8); speed *= 0.1; crash(0.3);
+            sfx(988, 120, "square", 0.05); ctx.after(150, () => sfx(740, 260, "square", 0.05));
+            ctx.log("WARN", "race: von der Polizei angehalten — <span class=\"num\">−8 s</span>");
+            cop.z = ((pos + PLAYER_Z - SEG * 120) % LEN + LEN) % LEN; cop.wait = 3;
+          }
+        }
+      }
+      caughtT = Math.max(0, caughtT - dt);
 
       const move = speed * dt;
       pos = (pos + move) % LEN;
@@ -836,6 +956,28 @@ OE.register({
       drawParts();
       g.restore();
 
+      // Polizei hinter dir: Blaulicht spiegelt sich in den unteren Ecken, Abstand im HUD
+      if (cop && (state === "running" || state === "count" || state === "paused")){
+        const back = copGap();
+        if (back < SEG * 140){
+          const near = 1 - back / (SEG * 140), ph = (clock * 6 | 0) % 2;
+          for (const [sx, col] of [[0, ph ? "70,140,255" : "255,60,80"], [w, ph ? "255,60,80" : "70,140,255"]]){
+            const rg = g.createRadialGradient(sx, h, 0, sx, h, Math.max(w, h) * (0.35 + near * 0.35));
+            rg.addColorStop(0, `rgba(${col},${(0.15 + near * 0.45).toFixed(3)})`); rg.addColorStop(1, `rgba(${col},0)`);
+            g.globalCompositeOperation = "lighter"; g.fillStyle = rg; g.fillRect(0, 0, w, h); g.globalCompositeOperation = "source-over";
+          }
+          const fs = Math.max(11, Math.min(w / 40, 16));
+          txt(`POLIZEI ${Math.round(back / KM * 1000)} m HINTER DIR`, w / 2, h - fs * 1.2, fs, ph ? "#7ab8ff" : "#ff5a6a", "center", 700, 8);
+        }
+      }
+      if (caughtT > 0 && state === "running"){
+        const fs = Math.max(20, Math.min(w / 14, 46));
+        g.globalAlpha = Math.min(1, caughtT * 1.5);
+        txt("ANGEHALTEN!", w / 2, h * 0.36, fs, "#7ab8ff", "center", 700, 18);
+        txt("−8 s", w / 2, h * 0.36 + fs * 1.1, fs * 0.75, C.red, "center", 600, 10);
+        g.globalAlpha = 1;
+      }
+
       // Aufprall-Blitz und Warnung bei knapper Zeit
       if (flash > 0){ g.fillStyle = `rgba(255,225,200,${(flash * 0.45).toFixed(3)})`; g.fillRect(0, 0, w, h); }
       if (state === "running" && time < 5){
@@ -898,7 +1040,7 @@ OE.register({
     if (ro) ro.observe(body);
     ctx.buttons(pad, [
       { label: "◀", key: "ArrowLeft" }, { label: "▶", key: "ArrowRight" },
-      { label: "▼", key: "ArrowDown", aria: "Bremse" }, { label: "⏯", key: "p", aria: "Pause" },
+      { label: "▼", key: "ArrowDown", aria: "Bremse" }, { label: "HUP", key: "h", aria: "Hupe" }, { label: "⏯", key: "p", aria: "Pause" },
     ]);
     body.addEventListener("pointerdown", () => { if (canRestart()) startRace(); else if (state === "paused") resume(); });
     reset();
@@ -907,7 +1049,8 @@ OE.register({
     overlay(`<div class="big" style="font-size:30px;letter-spacing:.5em;color:${C.bright};text-shadow:0 0 14px ${C.green}">RACE</div>
       <div style="color:${C.amber}">überholen · Checkpoint = +${BONUS} s</div>
       <div style="${sub}">${ctx.touch ? "Gas geht von allein · ▼ bremst" : "← → lenken · ↑ gas · ↓ bremse"}</div>
-      <div style="${sub}">${ctx.touch ? "◀ ▶ lenken · ⏯ pause" : "P pause · M ton · Q exit"}</div>
+      <div style="${sub}">${ctx.touch ? "◀ ▶ lenken · HUP hupt · ⏯ pause" : "H hupe · P pause · M ton · Q exit"}</div>
+      <div style="color:#7ab8ff">Polizei ${police ? "ist an" : "zuschalten"}: ${ctx.touch ? "oben auf „polizei“ tippen" : "Taste C"}</div>
       <div style="margin-top:10px">${ctx.touch ? "tippen zum Start" : "ENTER = start"}</div>`);
 
     return {
@@ -923,6 +1066,8 @@ OE.register({
         if (k === "Enter" || k === " "){ if (canRestart()) startRace(); else if (state === "paused") resume(); return true; }
         if (k === "p" || k === "P"){ if (state === "paused") resume(); else pause(); return true; }
         if (k === "m" || k === "M"){ toggleMute(); return true; }
+        if (k === "c" || k === "C"){ togglePolice(); return true; }
+        if (k === "h" || k === "H") return true;   // Hupe läuft über ctx.keys (gedrückt halten)
         if (k === "q"){ ctx.exit(); return true; }
         return ["w", "a", "s", "d"].includes(k.toLowerCase());
       },

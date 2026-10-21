@@ -627,3 +627,9 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 
 /* matrix: grobe Pixel, leicht weich und leuchtend wie auf einem alten Monitor */
 .matrix-cv{ image-rendering:pixelated; filter:blur(.45px) brightness(1.2); }
+
+/* Musik-Schalter in der Fußleiste */
+.botbar .music-seg{ cursor:pointer; }
+.botbar .music-seg b{ color:var(--green-dim); font-weight:500; }
+.botbar .music-seg.on b{ color:var(--green-bright); }
+.botbar .music-seg:hover{ color:var(--green-bright); }
