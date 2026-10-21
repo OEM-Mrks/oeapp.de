@@ -414,3 +414,12 @@ pre.atm{ margin:0; font-size:12px; line-height:1.2; color:var(--green); }
   .pf-screen, pre.atm{ font-size:10px; }
   .atm-cable{ display:none; }
 }
+
+/* exit: Bild zerfällt, danach nur noch der Cursor */
+.shatter{ position:fixed; inset:0; z-index:45; pointer-events:none; overflow:hidden; background:#000; }
+.shard{ position:absolute; overflow:hidden; will-change:transform; }
+/* in den Kopien nichts animieren — sonst muss jede Kachel jedes Bild neu gemalt werden */
+.shatter *{ animation:none !important; transition:none !important; }
+.shard-inner{ position:absolute; left:0; top:0; }
+.halt{ position:fixed; inset:0; z-index:45; background:#000; padding:14px 16px; }
+.halt .cursor{ width:10px; height:18px; }

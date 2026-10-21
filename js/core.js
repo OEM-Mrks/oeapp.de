@@ -460,7 +460,7 @@ function out(html, cls = ""){ addLine(cls ? `<span class="${cls}">${html}</span>
 const COMMANDS = {
   help(){
     out(`<span class="ok">oeapp.de shell</span> <span class="dim">— alles läuft lokal im Browser, nichts davon ist echt.</span>`);
-    out(`<span class="dim">Befehle:</span>  help · apps · clear · quote · whoami · date · uname · echo · history`);
+    out(`<span class="dim">Befehle:</span>  help · apps · clear · quote · whoami · date · uname · echo · history · exit`);
     out(`<span class="dim">Apps:</span>     ${APPS.filter(a => !a.hidden).map(a => `<span class="path">${a.id}</span>`).join(" · ")}`);
     out(`<span class="dim">Tasten:</span>   F2 = App-Auswahl · ESC = App beenden · ↑ = letzter Befehl · TAB = vervollständigen`);
   },
@@ -473,7 +473,8 @@ const COMMANDS = {
   echo(args){ out(esc(args.join(" "))); },
   history(){ history.forEach((h,i) => out(`<span class="dim">${String(i+1).padStart(4)}</span>  ${esc(h)}`)); },
   sudo(){ out(`oe is not in the sudoers file. <span class="warn">This incident will be reported.</span>`); },
-  exit(){ out(`<span class="dim">logout … nein, dafür ist die Aussicht zu schön.</span>`); },
+  exit(){ shutdown(); },
+  logout(){ shutdown(); },
   rm(args){ out(args.join(" ").includes("-rf") ? `<span class="err">Netter Versuch.</span>` : `rm: Zugriff verweigert`); },
 };
 COMMANDS.dir = COMMANDS.ls;
@@ -516,8 +517,92 @@ function initCli(){
 
 /* -------- Globale Tasten -------- */
 
+/* ============================================================
+   SHUTDOWN ("exit" im Hauptterminal)
+   Das Bild zerfällt in Kacheln, die nach unten wegfallen. Übrig
+   bleibt ein blinkender Cursor, bis jemand eine Taste drückt —
+   dann startet alles von vorne.
+   ============================================================ */
+
+let halted = false;
+
+async function shutdown(){
+  if (halted) return;
+  halted = true;
+  quietUntil = Infinity;
+  $("#cli").blur();
+  for (const l of [
+    `<span class="dim">logout</span>`,
+    `<span class="warn">Broadcast message from root@${SRV.host}: The system is going down for poweroff NOW!</span>`,
+    `<span class="ok">[  OK  ]</span> Stopped quote.daemon.service`,
+    `<span class="ok">[  OK  ]</span> Stopped render-engine.service`,
+    `<span class="ok">[  OK  ]</span> Unmounted /usr/local/oeapp/bin`,
+    `<span class="ok">[  OK  ]</span> Reached target Power-Off.`,
+  ]){ addLine(l); await sleep(140); }
+  await sleep(350);
+
+  const parts = [".topbar", ".stage", ".botbar"].map(s => $(s));
+  // Vorlage für die Kacheln: nur die sichtbaren Log-Zeilen, sonst wird es zu schwer
+  const tpl = document.createElement("div");
+  tpl.innerHTML = parts.map(p => p.outerHTML).join("");
+  const tlog = tpl.querySelector("#log");
+  while (tlog.children.length > 70) tlog.firstChild.remove();
+  const html = tpl.innerHTML;
+  const W = innerWidth, H = innerHeight;
+  const COLS = W < 600 ? 4 : 7, ROWS = W < 600 ? 8 : 7;
+  const cw = Math.ceil(W / COLS), ch = Math.ceil(H / ROWS);
+  const layer = document.createElement("div");
+  layer.className = "shatter";
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const anims = [];
+
+  // Kacheln: jede zeigt per Versatz ihren Ausschnitt einer Kopie der Seite.
+  // transform macht die Kachel zum Bezugsrahmen der position:fixed-Elemente.
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++){
+    const tile = document.createElement("div");
+    tile.className = "shard";
+    Object.assign(tile.style, { left: c*cw + "px", top: r*ch + "px", width: cw + "px", height: ch + "px" });
+    const inner = document.createElement("div");
+    inner.className = "shard-inner";
+    Object.assign(inner.style, { width: W + "px", height: H + "px", transform: `translate(${-c*cw}px, ${-r*ch}px)` });
+    inner.innerHTML = html;
+    tile.appendChild(inner);
+    layer.appendChild(tile);
+    // untere Reihen fallen zuerst, dann wandert der Zerfall nach oben
+    const delay = (ROWS - 1 - r) * 110 + Math.random() * 260;
+    const rot = (Math.random() * 2 - 1) * 28, dx = (Math.random() * 2 - 1) * 60;
+    anims.push(() => tile.animate(reduce
+      ? [{ opacity: 1 }, { opacity: 0 }]
+      : [
+          { transform: "translate(0,0) rotate(0)", opacity: 1 },
+          { transform: "translate(0,-6px) rotate(0)", opacity: 1, offset: 0.12 },
+          { transform: `translate(${dx}px, ${H - r*ch + ch}px) rotate(${rot}deg)`, opacity: 0.85 },
+        ],
+      { duration: reduce ? 600 : 900 + Math.random() * 500, delay, easing: "cubic-bezier(.55,0,1,.45)", fill: "forwards" }).finished);
+  }
+  document.body.appendChild(layer);
+  // Kopien zeigen sonst den Anfang des Logs statt der letzten Zeilen.
+  // Die IDs bleiben (fürs CSS); die Originale stehen im DOM vorne, $() trifft also weiter sie.
+  layer.querySelectorAll("#log").forEach(l => l.scrollTop = l.scrollHeight);
+  parts.forEach(p => p.style.visibility = "hidden");
+  beep(140, 500, "sawtooth", 0.04);
+  await Promise.all(anims.map(a => a()));
+  layer.remove();
+
+  // Nur noch der Cursor
+  const halt = document.createElement("div");
+  halt.className = "halt";
+  halt.innerHTML = '<span class="cursor"></span>';
+  document.body.appendChild(halt);
+  await sleep(400);   // damit ein noch gedrücktes Enter nicht sofort neu startet
+  const restart = () => location.reload();
+  addEventListener("keydown", restart, { once: true });
+  addEventListener("pointerdown", restart, { once: true });
+}
+
 function initKeys(){
   document.addEventListener("keydown", e => {
+    if (halted){ e.preventDefault(); return; }
     const fk = { F1:"log", F2:"apps", F3:"snake", F4:"blocks" }[e.key];
     if (fk){ e.preventDefault(); go(fk); return; }
     if (current){
