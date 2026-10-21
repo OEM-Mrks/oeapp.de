@@ -29,6 +29,8 @@ Im Prompt den Namen eintippen, `apps` bzw. **F2** für die Auswahl, **ESC** zur�
 - `js/core.js` – Boot, Log, Zitate, Shell-Prompt und App-Manager
 - `js/apps/*.js` – eine Datei pro Mini-App
 - `fonts/` – IBM Plex Mono, lokal eingebunden (keine externen Requests)
+- `favicon.*`, `apple-touch-icon.png`, `icons/`, `manifest.webmanifest` – Icons für Browser-Tab,
+  Home-Bildschirm (iPhone/Android) und App-Modus
 
 Neue App: Datei in `js/apps/` anlegen, `OE.register({ id, title, desc, start(ctx) })`
 aufrufen und in `index.html` einbinden. Sie taucht dann automatisch in `apps`
