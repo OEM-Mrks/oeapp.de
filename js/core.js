@@ -190,7 +190,7 @@ function bootLines(){
     "[    0.488210]   OK   Started nginx.service (static, gh-pages)",
     "[    0.512908]   OK   Started quote.daemon.service",
     "[    0.601122]   OK   Started render-engine.service",
-    "[    0.655311]   OK   Mounted /usr/local/oeapp/bin (11 apps)",
+    `[    0.655311]   OK   Mounted /usr/local/oeapp/bin (${APPS.filter(a => !a.hidden).length} apps)`,
     "[    0.702010]   OK   Reached target Multi-User System.",
     "",
     `Welcome to ${SRV.host} (tty1)`,

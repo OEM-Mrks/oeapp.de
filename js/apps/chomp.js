@@ -47,13 +47,61 @@ OE.register({
     body.innerHTML = `<canvas class="app-canvas"></canvas><div class="app-overlay"></div>`;
     const cv = body.querySelector("canvas"), g = cv.getContext("2d"), ov = body.querySelector(".app-overlay");
 
-    let ts = 20;
+    let ts = 20, mazeC = null, mazeFlash = null;
     function size(){
       ts = Math.max(10, Math.floor(Math.min(body.clientWidth / W, body.clientHeight / H)));
       const dpr = window.devicePixelRatio || 1;
       cv.width = W * ts * dpr; cv.height = H * ts * dpr;
       cv.style.width = W * ts + "px"; cv.style.height = H * ts + "px";
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      mazeC = renderMaze("51,255,102", "#b8ffc8");
+      mazeFlash = renderMaze("255,255,255", "#ffffff");
+    }
+
+    // Labyrinth einmal vorzeichnen: Neonröhren aus drei Lagen (breit/blass, mittel, hell)
+    function renderMaze(rgb, core){
+      const dpr = window.devicePixelRatio || 1;
+      const c = document.createElement("canvas");
+      c.width = W * ts * dpr; c.height = H * ts * dpr;
+      const x = c.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const bgr = x.createRadialGradient(W * ts / 2, H * ts / 2, 0, W * ts / 2, H * ts / 2, H * ts * 0.75);
+      bgr.addColorStop(0, "#03140a"); bgr.addColorStop(1, "#000");
+      x.fillStyle = bgr; x.fillRect(0, 0, W * ts, H * ts);
+      const wall = (xx, yy) => yy < 0 || yy >= H || xx < 0 || xx >= W ? true : MAZE[yy][xx] === "#" || MAZE[yy][xx] === " ";
+      // Wandblöcke leicht gefüllt, damit sie Masse haben
+      x.fillStyle = `rgba(${rgb},.06)`;
+      for (let y = 0; y < H; y++) for (let xx = 0; xx < W; xx++) if (MAZE[y][xx] === "#") x.fillRect(xx * ts, y * ts, ts, ts);
+      x.beginPath();
+      const inset = ts * 0.32, r = ts * 0.32;
+      for (let y = 0; y < H; y++) for (let xx = 0; xx < W; xx++){
+        if (MAZE[y][xx] !== "#") continue;
+        const X = xx * ts, Y = y * ts;
+        const up = !wall(xx, y - 1), dn = !wall(xx, y + 1), lf = !wall(xx - 1, y), rt = !wall(xx + 1, y);
+        // Kanten zu Gängen; an Außenecken gerundet
+        if (up){ x.moveTo(X + (lf ? inset + r : 0), Y + inset); x.lineTo(X + ts - (rt ? inset + r : 0), Y + inset); }
+        if (dn){ x.moveTo(X + (lf ? inset + r : 0), Y + ts - inset); x.lineTo(X + ts - (rt ? inset + r : 0), Y + ts - inset); }
+        if (lf){ x.moveTo(X + inset, Y + (up ? inset + r : 0)); x.lineTo(X + inset, Y + ts - (dn ? inset + r : 0)); }
+        if (rt){ x.moveTo(X + ts - inset, Y + (up ? inset + r : 0)); x.lineTo(X + ts - inset, Y + ts - (dn ? inset + r : 0)); }
+        if (up && lf){ x.moveTo(X + inset, Y + inset + r); x.arcTo(X + inset, Y + inset, X + inset + r, Y + inset, r); }
+        if (up && rt){ x.moveTo(X + ts - inset - r, Y + inset); x.arcTo(X + ts - inset, Y + inset, X + ts - inset, Y + inset + r, r); }
+        if (dn && lf){ x.moveTo(X + inset, Y + ts - inset - r); x.arcTo(X + inset, Y + ts - inset, X + inset + r, Y + ts - inset, r); }
+        if (dn && rt){ x.moveTo(X + ts - inset - r, Y + ts - inset); x.arcTo(X + ts - inset, Y + ts - inset, X + ts - inset, Y + ts - inset - r, r); }
+        // Innenecken: diagonal offen, beide Nachbarn Wand
+        const corner = (ox, oy) => !wall(xx + ox, y + oy) && wall(xx + ox, y) && wall(xx, y + oy);
+        const cxp = ox => ox < 0 ? X + inset : X + ts - inset, cyp = oy => oy < 0 ? Y + inset : Y + ts - inset;
+        for (const [ox, oy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) if (corner(ox, oy)){
+          const ex = ox < 0 ? X : X + ts, ey = oy < 0 ? Y : Y + ts;
+          x.moveTo(ex, cyp(oy)); x.arcTo(cxp(ox), cyp(oy), cxp(ox), ey, ts - inset);
+        }
+      }
+      x.lineCap = "round"; x.lineJoin = "round";
+      x.strokeStyle = `rgba(${rgb},.12)`; x.lineWidth = ts * 0.55; x.stroke();
+      x.strokeStyle = `rgba(${rgb},.35)`; x.lineWidth = ts * 0.24; x.stroke();
+      x.strokeStyle = core; x.lineWidth = Math.max(1.2, ts / 10); x.stroke();
+      // Tür zum Geisterhaus
+      x.fillStyle = "rgba(255,154,213,.25)"; x.fillRect(9 * ts - 2, 8 * ts + ts * 0.36, ts + 4, ts * 0.3);
+      x.fillStyle = "#ff9ad5"; x.fillRect(9 * ts, 8 * ts + ts * 0.44, ts, ts * 0.14);
+      return c;
     }
 
     const wrapX = x => (x + W) % W;
@@ -62,13 +110,16 @@ OE.register({
 
     let grid, dots, pac, ghosts, score, lives, level, best = ctx.store.get("chomp.best", 0);
     let state = "ready", mode = "scatter", modeT = 0, fright = 0, combo = 0, clock = 0, freeze = 0;
+    let dieT = 0, eatenDots = 0, fruit = null, readyOn = false;
+    const pops = [], parts = [];   // Punkte-Einblendungen, Funken
 
     function newLevel(){
       grid = MAZE.map(r => [...r].map(c => c === "." ? 1 : c === "o" ? 2 : 0));
-      dots = grid.flat().filter(Boolean).length;
+      dots = grid.flat().filter(Boolean).length; eatenDots = 0; fruit = null;
       resetActors();
     }
     function resetActors(){
+      readyOn = true;
       pac = { x: 9, y: 15, dir: "left", want: "left", p: 0, moving: true, mouth: 0 };
       ghosts = GHOSTS.map((d, i) => ({ ...d, x: i === 0 ? DOOR.x : 8 + (i - 1), y: i === 0 ? DOOR.y : HOME.y,
         fx: 0, fy: 0, dir: "left", p: 0, st: i === 0 ? "out" : "house", eaten: false }));
@@ -148,9 +199,12 @@ OE.register({
       const v = grid[y] && grid[y][x];
       if (!v) return;
       grid[y][x] = 0; dots--;
+      eatenDots++;
+      if (eatenDots === 70 || eatenDots === 170) fruit = { x: 9, y: 11, t: 9 };   // Bonus-Kirsche unter dem Geisterhaus
       if (v === 1){ score += 10; if (dots % 2) ctx.beep(520, 25, "square", 0.02); }
       else {
         score += 50; combo = 0;
+        burst(x * ts + ts / 2, y * ts + ts / 2, "#c8ffd4", 16);
         fright = Math.max(2, 7 - level);
         ghosts.forEach(gh => { if (gh.st === "out"){ gh.reverse = true; gh.scared = true; } });
         ctx.beep(220, 160, "triangle", 0.05);
@@ -181,9 +235,26 @@ OE.register({
       }
     }
 
+    function burst(x, y, col, n){
+      for (let i = 0; i < n; i++){
+        const a = Math.random() * Math.PI * 2, v = ts * (2 + Math.random() * 5), life = 0.3 + Math.random() * 0.4;
+        parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life, max: life, col });
+      }
+    }
+    function pop(x, y, text, col){ pops.push({ x, y, text, col, t: 0 }); }
+
     function update(dt){
       clock += dt;
       if (freeze > 0){ freeze -= dt; return; }
+      readyOn = false;
+      if (fruit){
+        fruit.t -= dt;
+        const fp = pos(pac);
+        if (Math.abs(fp.x - fruit.x) < 0.6 && Math.abs(fp.y - fruit.y) < 0.6){
+          const pts = 100 * level; score += pts; pop(fruit.x, fruit.y, pts, "#ff7a8a");
+          ctx.beep(1046, 80); ctx.after(90, () => ctx.beep(1568, 120)); fruit = null;
+        } else if (fruit.t <= 0) fruit = null;
+      }
       if (fright > 0){ fright -= dt; if (fright <= 0) ghosts.forEach(gh => gh.scared = false); }
       else {
         modeT += dt;
@@ -223,6 +294,7 @@ OE.register({
           if (gh.scared){
             gh.st = "eyes"; gh.scared = false; gh.eaten = true;
             const pts = 200 * 2 ** combo++; score += pts;
+            pop(gh.fx, gh.fy, pts, "#5affe0");
             ctx.beep(880 + combo * 200, 120);
             freeze = 0.35;
           } else return die();
@@ -231,88 +303,162 @@ OE.register({
     }
 
     function die(){
+      // erst die Animation (Spieler klappt auf und verpufft), dann geht es weiter
+      state = "dying"; dieT = 0;
+      for (let i = 0; i < 9; i++) ctx.after(i * 110, () => ctx.beep(780 - i * 60, 90, "triangle", 0.05));
+    }
+    function afterDeath(){
       lives--;
-      ctx.beep(400, 120, "sawtooth"); setTimeout(() => ctx.beep(250, 300, "sawtooth"), 130);
+      const pp = pos(pac); burst(pp.x * ts + ts / 2, pp.y * ts + ts / 2, "#ffe066", 22);
+      ctx.beep(140, 220, "sawtooth", 0.05);
       if (lives <= 0){
         state = "over";
         if (score > best){ best = score; ctx.store.set("chomp.best", best); }
         overlay(`<div class="big">GAME OVER</div><div>score ${score} · level ${level}</div>
           <div class="dim">${ctx.touch ? "tippen" : "ENTER"} = nochmal · ESC = exit</div>`);
-      } else resetActors();
+      } else { resetActors(); state = "running"; }
     }
 
     function overlay(html){ ov.hidden = !html; if (html) ov.innerHTML = html; }
 
     /* ---------- Zeichnen ---------- */
-    function draw(){
-      g.fillStyle = "#000"; g.fillRect(0, 0, W * ts, H * ts);
-      // Wände als Umrisslinien wie auf einem Vektor-Monitor
-      g.strokeStyle = state === "clear" && Math.floor(clock * 6) % 2 ? "#c8ffd4" : "#33ff66";
-      g.lineWidth = Math.max(1.5, ts / 9); g.shadowColor = "#33ff66"; g.shadowBlur = 6;
-      g.beginPath();
+    const TAU = Math.PI * 2;
+    function halo(x, y, r, rgb, a){
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, `rgba(${rgb},${a})`); gr.addColorStop(1, `rgba(${rgb},0)`);
+      g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+
+    function draw(dt){
+      const flashing = state === "clear" && Math.floor(clock * 6) % 2;
+      g.drawImage(flashing ? mazeFlash : mazeC, 0, 0, W * ts, H * ts);
+
+      // Punkte und Kraftpillen
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){
-        if (MAZE[y][x] !== "#") continue;
-        const X = x * ts, Y = y * ts, inset = ts * 0.3;
-        const wall = (xx, yy) => yy < 0 || yy >= H || xx < 0 || xx >= W ? true : MAZE[yy][xx] === "#" || MAZE[yy][xx] === " ";
-        if (!wall(x, y - 1)){ g.moveTo(X, Y + inset); g.lineTo(X + ts, Y + inset); }
-        if (!wall(x, y + 1)){ g.moveTo(X, Y + ts - inset); g.lineTo(X + ts, Y + ts - inset); }
-        if (!wall(x - 1, y)){ g.moveTo(X + inset, Y); g.lineTo(X + inset, Y + ts); }
-        if (!wall(x + 1, y)){ g.moveTo(X + ts - inset, Y); g.lineTo(X + ts - inset, Y + ts); }
+        const v = grid[y][x], cx = x * ts + ts / 2, cy = y * ts + ts / 2;
+        if (v === 1){
+          g.fillStyle = "rgba(255,214,170,.18)"; g.beginPath(); g.arc(cx, cy, ts * 0.17, 0, TAU); g.fill();
+          g.fillStyle = "#ffe2c2"; g.beginPath(); g.arc(cx, cy, Math.max(1.4, ts * 0.085), 0, TAU); g.fill();
+        } else if (v === 2){
+          const pulse = 0.8 + Math.sin(clock * 7) * 0.2;
+          halo(cx, cy, ts * 0.85 * pulse, "255,226,194", 0.45);
+          g.fillStyle = "#fff1de"; g.beginPath(); g.arc(cx, cy, ts * 0.3 * pulse, 0, TAU); g.fill();
+        }
       }
-      g.stroke();
-      g.shadowBlur = 0;
-      // Tür
-      g.fillStyle = "#ff9ad5"; g.fillRect(9 * ts, 8 * ts + ts * 0.45, ts, ts * 0.12);
-      // Punkte
-      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){
-        const v = grid[y][x];
-        if (v === 1){ g.fillStyle = "#a6ffb8"; const s = Math.max(2, ts / 7); g.fillRect(x * ts + ts / 2 - s / 2, y * ts + ts / 2 - s / 2, s, s); }
-        else if (v === 2 && Math.floor(clock * 4) % 2 === 0){ g.fillStyle = "#c8ffd4"; g.beginPath(); g.arc(x * ts + ts / 2, y * ts + ts / 2, ts * 0.3, 0, Math.PI * 2); g.fill(); }
-      }
-      // Geister
+
+      if (fruit && (fruit.t > 2 || Math.floor(clock * 8) % 2)) drawCherry(fruit.x * ts + ts / 2, fruit.y * ts + ts / 2, ts * 0.42);
+
       for (const gh of ghosts) drawGhost(gh);
-      // Spieler
-      const pp = pos(pac);
-      const cx = pp.x * ts + ts / 2, cy = pp.y * ts + ts / 2, r = ts * 0.45;
-      const open = 0.05 + Math.abs(Math.sin(pac.mouth)) * 0.32;
-      const rot = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 }[pac.dir];
-      g.fillStyle = "#ffe066"; g.shadowColor = "#ffe066"; g.shadowBlur = 10;
-      g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, r, rot + open * Math.PI, rot - open * Math.PI + Math.PI * 2); g.closePath(); g.fill();
-      g.shadowBlur = 0;
+      drawPac();
+
+      // Funken
+      g.globalCompositeOperation = "lighter";
+      for (let i = parts.length - 1; i >= 0; i--){
+        const p = parts[i];
+        p.life -= dt; if (p.life <= 0){ parts.splice(i, 1); continue; }
+        p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.92; p.vy *= 0.92;
+        g.globalAlpha = p.life / p.max; g.fillStyle = p.col; g.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+      }
+      g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
+
+      // Punkte-Einblendungen steigen auf und verblassen
+      g.textAlign = "center"; g.textBaseline = "middle";
+      for (let i = pops.length - 1; i >= 0; i--){
+        const p = pops[i]; p.t += dt;
+        if (p.t > 1.1){ pops.splice(i, 1); continue; }
+        g.globalAlpha = Math.min(1, (1.1 - p.t) * 2);
+        g.font = `600 ${Math.round(ts * 0.75)}px "IBM Plex Mono", monospace`;
+        g.fillStyle = p.col; g.fillText(p.text, p.x * ts + ts / 2, p.y * ts + ts / 2 - p.t * ts * 0.9);
+      }
+      g.globalAlpha = 1;
+
+      if (readyOn && state !== "dying"){
+        g.font = `600 ${Math.round(ts * 0.9)}px "IBM Plex Mono", monospace`;
+        g.fillStyle = "#ffe066"; g.fillText("READY!", 9.5 * ts, 11.5 * ts);
+      }
 
       bar.innerHTML = `<span>score <b>${String(score).padStart(5, "0")}</b></span><span>best <b>${best}</b></span>
-        <span>level <b>${level}</b></span><span>leben <b>${"◖".repeat(Math.max(0, lives))}</b></span>
+        <span>level <b>${level}</b></span><span>leben <b style="color:#ffe066">${"◖".repeat(Math.max(0, lives))}</b></span>
         <span class="right">${fright > 0 ? "<b>JAGD!</b>" : mode === "chase" ? "geister jagen" : "geister zerstreut"}</span>`;
     }
 
+    function drawPac(){
+      const pp = pos(pac);
+      const cx = pp.x * ts + ts / 2, cy = pp.y * ts + ts / 2, r = ts * 0.47;
+      let open = 0.04 + Math.abs(Math.sin(pac.mouth)) * 0.3;
+      let rot = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 }[pac.dir];
+      if (state === "dying"){
+        if (dieT > 1.15) return;
+        rot = -Math.PI / 2; open = Math.min(0.999, 0.1 + dieT / 1.1);   // klappt nach oben auf, bis nichts mehr übrig ist
+      }
+      halo(cx, cy, r * 2.4, "255,224,102", 0.28);
+      const gr = g.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.1, cx, cy, r);
+      gr.addColorStop(0, "#fffbd0"); gr.addColorStop(0.45, "#ffe34d"); gr.addColorStop(1, "#e2a800");
+      g.fillStyle = gr;
+      g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, r, rot + open * Math.PI, rot - open * Math.PI + TAU); g.closePath(); g.fill();
+      // kleines Auge, schaut in Laufrichtung
+      if (state !== "dying"){
+        const ex = cx + Math.cos(rot - Math.PI / 2 * (pac.dir === "left" ? -1 : 1)) * r * 0.45 + Math.cos(rot) * r * 0.05;
+        const ey = cy + Math.sin(rot - Math.PI / 2 * (pac.dir === "left" ? -1 : 1)) * r * 0.45 + Math.sin(rot) * r * 0.05;
+        g.fillStyle = "#3a2a00"; g.beginPath(); g.arc(ex, ey, Math.max(1, r * 0.11), 0, TAU); g.fill();
+      }
+    }
+
     function drawGhost(gh){
-      const x = gh.fx * ts + ts / 2, y = gh.fy * ts + ts / 2, r = ts * 0.45;
+      const x = gh.fx * ts + ts / 2, y = gh.fy * ts + ts / 2, r = ts * 0.47;
       const blinkEnd = fright > 0 && fright < 1.6 && Math.floor(clock * 8) % 2;
       if (gh.st !== "eyes"){
-        g.fillStyle = gh.scared ? (blinkEnd ? "#e8ffe8" : "#2f5cff") : gh.color;
+        const col = gh.scared ? (blinkEnd ? "#e8f0ff" : "#2f5cff") : gh.color;
+        const rgb = gh.scared ? (blinkEnd ? "232,240,255" : "47,92,255") : hexRgb(gh.color);
+        halo(x, y, r * 2.2, rgb, 0.22);
+        const gr = g.createLinearGradient(x, y - r, x, y + r);
+        gr.addColorStop(0, shade(col, 0.35)); gr.addColorStop(0.6, col); gr.addColorStop(1, shade(col, -0.25));
+        g.fillStyle = gr;
         g.beginPath();
         g.arc(x, y - r * 0.1, r, Math.PI, 0);
-        // gezackter Saum, wackelt im Takt
-        const bottom = y + r * 0.85, waves = 3, wv = (r * 2) / waves, lift = Math.floor(clock * 8) % 2 ? 0.3 : 0.18;
+        // welliger Saum, wackelt im Takt
+        const bottom = y + r * 0.88, waves = 4, wv = (r * 2) / waves, ph = Math.floor(clock * 8) % 2 ? 0.5 : 0;
         g.lineTo(x + r, bottom);
         for (let i = 0; i < waves; i++){
           const sx = x + r - i * wv;
-          g.lineTo(sx - wv / 2, bottom - r * lift);
-          g.lineTo(sx - wv, bottom);
+          g.quadraticCurveTo(sx - wv * (0.25 + ph * 0.5), bottom - r * 0.32, sx - wv, bottom);
         }
         g.closePath(); g.fill();
       }
       if (gh.scared && gh.st !== "eyes"){
-        g.fillStyle = "#ffd6d6";
-        g.fillRect(x - r * 0.4, y - r * 0.3, r * 0.2, r * 0.2); g.fillRect(x + r * 0.2, y - r * 0.3, r * 0.2, r * 0.2);
+        // erschrockenes Gesicht: Punktaugen, Zickzack-Mund
+        g.fillStyle = blinkEnd ? "#ff4f6a" : "#ffd6d6";
+        g.fillRect(x - r * 0.38, y - r * 0.32, r * 0.2, r * 0.2); g.fillRect(x + r * 0.18, y - r * 0.32, r * 0.2, r * 0.2);
+        g.strokeStyle = g.fillStyle; g.lineWidth = Math.max(1, r * 0.1);
+        g.beginPath();
+        for (let i = 0; i <= 6; i++) g.lineTo(x - r * 0.55 + i * r * 0.183, y + r * 0.3 + (i % 2 ? -r * 0.12 : 0));
+        g.stroke();
         return;
       }
       // Augen schauen in Laufrichtung
       const [dx, dy] = DIRS[gh.dir] || [0, 0];
-      for (const ex of [-0.35, 0.35]){
-        g.fillStyle = "#fff"; g.beginPath(); g.arc(x + ex * r, y - r * 0.2, r * 0.26, 0, Math.PI * 2); g.fill();
-        g.fillStyle = "#1a3cff"; g.beginPath(); g.arc(x + ex * r + dx * r * 0.12, y - r * 0.2 + dy * r * 0.12, r * 0.13, 0, Math.PI * 2); g.fill();
+      for (const ex of [-0.36, 0.36]){
+        g.fillStyle = "#fff"; g.beginPath(); g.ellipse(x + ex * r + dx * r * 0.08, y - r * 0.22 + dy * r * 0.06, r * 0.24, r * 0.3, 0, 0, TAU); g.fill();
+        g.fillStyle = "#1a3cff"; g.beginPath(); g.arc(x + ex * r + dx * r * 0.2, y - r * 0.22 + dy * r * 0.18, r * 0.13, 0, TAU); g.fill();
       }
+    }
+
+    function drawCherry(x, y, r){
+      halo(x, y, r * 2.2, "255,79,106", 0.3);
+      g.strokeStyle = "#5ae86a"; g.lineWidth = Math.max(1.2, r * 0.14); g.lineCap = "round";
+      g.beginPath(); g.moveTo(x - r * 0.45, y + r * 0.2); g.quadraticCurveTo(x - r * 0.1, y - r * 0.6, x + r * 0.45, y - r * 0.85);
+      g.moveTo(x + r * 0.4, y + r * 0.35); g.quadraticCurveTo(x + r * 0.35, y - r * 0.3, x + r * 0.45, y - r * 0.85); g.stroke();
+      for (const [ox, oy] of [[-0.45, 0.35], [0.4, 0.5]]){
+        const gr = g.createRadialGradient(x + ox * r - r * 0.12, y + oy * r - r * 0.12, r * 0.05, x + ox * r, y + oy * r, r * 0.42);
+        gr.addColorStop(0, "#ffb3bd"); gr.addColorStop(0.5, "#ff2d4b"); gr.addColorStop(1, "#a0001a");
+        g.fillStyle = gr; g.beginPath(); g.arc(x + ox * r, y + oy * r, r * 0.42, 0, TAU); g.fill();
+      }
+    }
+
+    const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(",");
+    function shade(h, f){
+      const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).map(v => Math.round(f > 0 ? v + (255 - v) * f : v * (1 + f)));
+      return `rgb(${c.join(",")})`;
     }
 
     function begin(){
@@ -323,8 +469,11 @@ OE.register({
     ctx.loop(dt => {
       const s = Math.min(dt, 50) / 1000;
       if (state === "running") update(s);
-      else clock += s;
-      draw();
+      else {
+        clock += s;
+        if (state === "dying"){ dieT += s; if (dieT > 1.5) afterDeath(); }
+      }
+      draw(s);
     });
 
     size();

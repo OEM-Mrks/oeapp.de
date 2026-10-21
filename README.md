@@ -14,6 +14,7 @@ Im Prompt den Namen eintippen, `apps` bzw. **F2** für die Auswahl, **ESC** zur�
 | `blocks`   | Fallende Blöcke im ASCII-Look (Tetris-artig, eigener Code)  |
 | `pong`     | Tischtennis gegen den Computer (`pong --2p` zu zweit)       |
 | `chomp`    | Labyrinth mit vier Geistern (Pac-Man-artig, eigener Code)   |
+| `tron`     | Lichtrad-Duell gegen 1–3 Computergegner (Tron, 1982)        |
 | `race`     | Pseudo-3D-Autorennen im Vektor-Look mit Checkpoints         |
 | `video`    | Videothek-Kasse von 1994 im DOS-Look: Verleih, Rückgabe, Bon   |
 | `swan`     | 108-Minuten-Countdown aus „Lost“ (`swan --fast` ab 4:00)    |
