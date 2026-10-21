@@ -17,7 +17,7 @@ Im Prompt den Namen eintippen, `apps` bzw. **F2** für die Auswahl, **ESC** zur�
 | `race`     | Pseudo-3D-Autorennen im Vektor-Look mit Checkpoints         |
 | `video`    | Videothek-Kasse von 1994 im DOS-Look: Verleih, Rückgabe, Bon   |
 | `swan`     | 108-Minuten-Countdown aus „Lost“ (`swan --fast` ab 4:00)    |
-| `atm`      | Taschencomputer am Geldautomaten (T2-Hommage, Animation)    |
+| `atm`      | Atari Portfolio knackt den Geldautomaten (T2-Hommage)       |
 | `fsociety` | Fake-Hacker-Shell im Stil von „Mr. Robot“, `/help`          |
 | `life`     | Conways Game of Life zum Selberzeichnen                     |
 | `matrix`   | Digitaler Regen                                             |
