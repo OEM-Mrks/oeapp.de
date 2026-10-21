@@ -33,6 +33,7 @@ if (TOUCH) document.body.classList.add("touch");
 /* -------- Handy-Anpassungen (vor allem iOS Safari) -------- */
 
 const audioCtxs = [];
+let resetZoom = () => {};
 if (TOUCH){
   // Canvas-Leuchten (shadowBlur) ist in Safari sehr teuer und lässt die Spiele ruckeln
   const sb = window.CanvasRenderingContext2D && Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, "shadowBlur");
@@ -46,6 +47,7 @@ if (TOUCH){
   const vv = window.visualViewport, root = document.documentElement;
   if (vv){
     const fit = () => {
+      if (Math.abs(vv.scale - 1) > 0.01) return;   // gezoomt: Layout nicht an den Ausschnitt anpassen
       root.style.setProperty("--vvh", vv.height + "px");
       root.style.setProperty("--vvt", vv.offsetTop + "px");
       document.body.classList.toggle("kbd", innerHeight - vv.height > 120);
@@ -55,6 +57,18 @@ if (TOUCH){
     fit();
     document.body.classList.add("vv");
   }
+
+  // Hat iOS doch hineingezoomt (Eingabefeld, Doppeltipp), fehlt rechts und unten die halbe Seite.
+  // Ein neu gesetzter Viewport-Tag setzt den Zoom zurück.
+  const vp = document.querySelector('meta[name="viewport"]');
+  const base = vp ? vp.content : "";
+  resetZoom = () => {
+    if (!vp || (vv && Math.abs(vv.scale - 1) < 0.01)) return;
+    vp.content = base + ",user-scalable=no";
+    setTimeout(() => { vp.content = base; }, 60);
+  };
+  document.addEventListener("focusout", () => setTimeout(resetZoom, 50));
+  if (vv) vv.addEventListener("resize", () => { if (!document.activeElement || !document.activeElement.matches("input")) resetZoom(); });
 
   // Kein Gummiband-Scrollen der ganzen Seite, kein Pinch-Zoom mitten im Spiel
   const scrollable = el => {
@@ -420,13 +434,13 @@ function makeCtx(app, args){
       target.addEventListener("pointermove", e => {
         if (!down) return;
         const dx = e.clientX - sx, dy = e.clientY - sy;
-        if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_PX) return;
         moved = true; sx = e.clientX; sy = e.clientY;
         sendKey(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "ArrowRight" : "ArrowLeft") : (dy > 0 ? "ArrowDown" : "ArrowUp"));
       });
-      target.addEventListener("pointerup", () => {
+      target.addEventListener("pointerup", e => {
         if (!down) return; down = false;
-        if (!moved && onTap && Date.now()-st < 400) onTap();
+        if (!moved && onTap && Date.now()-st < 400) onTap(e);
       });
       target.addEventListener("pointercancel", () => { down = false; });
     },
@@ -471,6 +485,8 @@ function makeCtx(app, args){
   return ctx;
 }
 
+const SWIPE_PX = 14;          // ab so viel Fingerweg zählt es als Wischen
+
 const normKey = k => k.length === 1 ? k.toLowerCase() : k;
 
 function sendKey(key){
@@ -494,6 +510,7 @@ function runApp(id, args = []){
   addLine(fmt("OK", `exec <span class="path">/usr/local/oeapp/bin/${esc(app.id)}</span> <span class="dim">pid=${current.pid}</span>`));
   current.inst = app.start(ctx) || {};
   if (document.activeElement === $("#cli")) $("#cli").blur();
+  resetZoom();
   return true;
 }
 

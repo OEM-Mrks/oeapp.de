@@ -149,11 +149,19 @@ OE.register({
       { label: "▼", key: "ArrowDown" }, { label: "▶", key: "ArrowRight" },
       { label: "⏯", key: "p", aria: "Pause" },
     ]);
-    ctx.swipe(body, () => { if (state !== "running") startOrRestart(); });
+    // Tippen lenkt auch: Richtung Fingerposition, quer zur aktuellen Fahrtrichtung
+    ctx.swipe(body, e => {
+      if (state !== "running"){ startOrRestart(); return; }
+      const r = cv.getBoundingClientRect(), head = snake[0];
+      const hx = r.left + (head.x + 0.5) * cell, hy = r.top + (head.y + 0.5) * cell;
+      const cur = queue.length ? queue[queue.length - 1] : dir;
+      if (cur.x) turn(0, e.clientY < hy ? -1 : 1);
+      else turn(e.clientX < hx ? -1 : 1, 0);
+    });
 
     reset();
     overlay(`<div class="big">S N A K E</div><div>friss ◆ · wachse · beiß dich nicht selbst</div>
-      <div class="dim">${ctx.touch ? "tippen zum Start · wischen zum Lenken" : "SPACE / Pfeiltaste = start"}</div>`);
+      <div class="dim">${ctx.touch ? "tippen zum Start · wischen oder neben den Kopf tippen" : "SPACE / Pfeiltaste = start"}</div>`);
 
     return {
       key(e){
