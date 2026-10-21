@@ -5,3 +5,6 @@ cgi-bin/
 index.php
 
 .DS_Store
+
+# lokale Werkzeuge
+.claude/
