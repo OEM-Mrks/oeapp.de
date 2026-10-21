@@ -36,5 +36,6 @@ und `help` auf.
 
 Lokal testen: `python3 -m http.server 8765` und http://localhost:8765 öffnen.
 
-Änderungen: committen, nach `main` pushen — GitHub Pages veröffentlicht
+Änderungen: in `index.html` die Versionsnummer `?v=…` an CSS/JS hochzählen
+(sonst laden Browser alte Dateien aus dem Cache), committen, nach `main` pushen — GitHub Pages veröffentlicht
 automatisch nach ca. einer Minute.
