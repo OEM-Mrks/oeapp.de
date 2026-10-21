@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#000000" />
+<title>oeapp.de // terminal</title>
+<style>
+  @font-face{
+    font-family:"IBM Plex Mono";
+    font-style:normal;
+    font-weight:400;
+    font-display:swap;
+    src:url("fonts/IBMPlexMono-400.woff2") format("woff2");
+  }
+  @font-face{
+    font-family:"IBM Plex Mono";
+    font-style:normal;
+    font-weight:500;
+    font-display:swap;
+    src:url("fonts/IBMPlexMono-500.woff2") format("woff2");
+  }
+  @font-face{
+    font-family:"IBM Plex Mono";
+    font-style:normal;
+    font-weight:600;
+    font-display:swap;
+    src:url("fonts/IBMPlexMono-600.woff2") format("woff2");
+  }
+  :root{
+    --bg:#000;
+    --green:#33ff66;
+    --green-dim:#1a8a36;
+    --green-bright:#a6ffb8;
+    --amber:#ffb454;
+    --red:#ff5a5a;
+    --gray:#5a8a66;
+    --topbar-h: 34px;
+    --botbar-h: 24px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);height:100%;}
+  body{
+    color:var(--green);
+    font-family:"IBM Plex Mono", ui-monospace, "Menlo", monospace;
+    font-size:14px;
+    line-height:1.45;
+    overflow:hidden;
+    text-shadow:0 0 2px rgba(51,255,102,.55), 0 0 8px rgba(51,255,102,.18);
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* CRT effects */
+  .crt::before{
+    content:"";
+    position:fixed; inset:0; pointer-events:none; z-index:50;
+    background:
+      repeating-linear-gradient(
+        to bottom,
+        rgba(0,0,0,0) 0px,
+        rgba(0,0,0,0) 2px,
+        rgba(0,0,0,.18) 3px,
+        rgba(0,0,0,.18) 3px
+      );
+    mix-blend-mode:multiply;
+  }
+  .crt::after{
+    content:"";
+    position:fixed; inset:0; pointer-events:none; z-index:51;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%);
+  }
+  .flicker{ animation: flicker 6s infinite; }
+  @keyframes flicker{
+    0%,100%{opacity:1}
+    47%{opacity:1}
+    48%{opacity:.78}
+    49%{opacity:1}
+    72%{opacity:.92}
+    73%{opacity:1}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .flicker{ animation:none; }
+    .crt::before{ display:none; }
+  }
+
+  /* Top bar */
+  .topbar{
+    position:fixed; top:0; left:0; right:0;
+    height:var(--topbar-h);
+    display:flex; justify-content:space-between; align-items:center;
+    padding:0 16px;
+    border-bottom:1px solid rgba(51,255,102,.25);
+    background:rgba(0,0,0,.6);
+    backdrop-filter: blur(2px);
+    font-size:12px;
+    color:var(--green-dim);
+    z-index:10;
+    letter-spacing:.04em;
+    padding-top:env(safe-area-inset-top, 0);
+    height:calc(var(--topbar-h) + env(safe-area-inset-top, 0));
+  }
+  .topbar .left, .topbar .right{display:flex; gap:18px; align-items:center; min-width:0;}
+  .topbar b{color:var(--green); font-weight:500;}
+  .topbar .hide-sm{ display:inline; }
+  .dot{
+    display:inline-block; width:8px; height:8px; border-radius:50%;
+    background:var(--green); box-shadow:0 0 6px var(--green);
+    margin-right:6px;
+    animation: pulse 1.6s infinite ease-in-out;
+  }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.35} }
+
+  /* Layout */
+  .stage{
+    position:fixed;
+    top:calc(var(--topbar-h) + env(safe-area-inset-top, 0));
+    left:0; right:0;
+    bottom:calc(var(--botbar-h) + env(safe-area-inset-bottom, 0));
+    display:grid;
+    grid-template-columns: 1fr 380px;
+    gap:1px;
+    background: rgba(51,255,102,.18);
+  }
+  .pane{ background:#000; padding:14px 18px; overflow:hidden; position:relative; min-height:0; min-width:0; }
+  .pane h2{
+    font-size:11px; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--green-dim); margin:0 0 10px 0; font-weight:500;
+    border-bottom:1px dashed rgba(51,255,102,.25);
+    padding-bottom:6px;
+  }
+
+  /* Main log */
+  #log{
+    height:calc(100% - 30px);
+    overflow:hidden;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  #log .line{ display:block; }
+  #log .ts{ color:var(--gray); }
+  #log .ok{ color:var(--green-bright); }
+  #log .warn{ color:var(--amber); }
+  #log .err{ color:var(--red); }
+  #log .dim{ color:var(--green-dim); }
+  #log .arrow{ color:var(--green-bright); }
+  #log .path{ color:#9af0a8; }
+  #log .num{ color:#a6ffb8; }
+
+  /* Right side stacks */
+  .side{
+    display:grid;
+    grid-template-rows: auto auto 1fr auto;
+    gap:1px;
+    background: rgba(51,255,102,.18);
+    min-height:0;
+  }
+  .side > .pane{ padding:12px 14px; }
+
+  /* Quote block */
+  .quote{
+    border:1px solid rgba(51,255,102,.35);
+    padding:14px 16px;
+    position:relative;
+    min-height:170px;
+  }
+  .quote .corner{
+    position:absolute; width:10px; height:10px;
+    border-color:var(--green);
+  }
+  .quote .corner.tl{ top:-1px; left:-1px; border-top:2px solid; border-left:2px solid;}
+  .quote .corner.tr{ top:-1px; right:-1px; border-top:2px solid; border-right:2px solid;}
+  .quote .corner.bl{ bottom:-1px; left:-1px; border-bottom:2px solid; border-left:2px solid;}
+  .quote .corner.br{ bottom:-1px; right:-1px; border-bottom:2px solid; border-right:2px solid;}
+  .quote .label{ font-size:10px; color:var(--green-dim); letter-spacing:.2em; text-transform:uppercase; margin-bottom:10px;}
+  .quote .text{ font-size:15px; color:var(--green-bright); line-height:1.5; min-height:96px;}
+  .quote .author{ margin-top:12px; font-size:12px; color:var(--green-dim); }
+  .quote .author b{ color:var(--green); font-weight:500;}
+
+  /* meters */
+  .meters .row{
+    display:grid; grid-template-columns: 64px 1fr 56px;
+    gap:10px; align-items:center; font-size:12px; margin-bottom:6px;
+  }
+  .meters .lbl{ color:var(--green-dim); }
+  .meters .bar{
+    background:rgba(51,255,102,.12); height:10px; position:relative; overflow:hidden;
+    border:1px solid rgba(51,255,102,.25);
+  }
+  .meters .bar > i{
+    display:block; height:100%; background:var(--green);
+    box-shadow: 0 0 6px var(--green);
+    transition: width .6s ease;
+  }
+  .meters .val{ text-align:right; color:var(--green-bright); font-variant-numeric: tabular-nums;}
+
+  /* Process table */
+  .ps{ font-size:12px; }
+  .ps .head, .ps .row{
+    display:grid; grid-template-columns: 50px 1fr 60px 60px;
+    gap:8px;
+  }
+  .ps .head{ color:var(--green-dim); border-bottom:1px dashed rgba(51,255,102,.25); padding-bottom:4px; margin-bottom:4px;}
+  .ps .row{ padding:2px 0; }
+  .ps .row .name{ color:var(--green-bright); }
+  .ps .row .num{ color:var(--green); font-variant-numeric: tabular-nums; text-align:right;}
+  .ps .row.dim .name{ color:var(--green-dim);}
+
+  /* ASCII art */
+  pre.ascii{
+    margin:0;
+    color:var(--green);
+    font-size:10px;
+    line-height:1.05;
+    white-space:pre;
+    text-shadow:0 0 4px rgba(51,255,102,.5);
+  }
+
+  /* Bottom bar */
+  .botbar{
+    position:fixed; bottom:0; left:0; right:0;
+    height:calc(var(--botbar-h) + env(safe-area-inset-bottom, 0));
+    padding-bottom:env(safe-area-inset-bottom, 0);
+    display:flex; align-items:center; gap:0;
+    background:#000;
+    border-top:1px solid rgba(51,255,102,.25);
+    font-size:11px;
+    color:var(--green-dim);
+    z-index:10;
+    letter-spacing:.05em;
+    overflow:hidden;
+  }
+  .botbar .seg{
+    padding:0 12px; height:var(--botbar-h); display:flex; align-items:center;
+    border-right:1px solid rgba(51,255,102,.18);
+    white-space:nowrap;
+  }
+  .botbar .seg.active{ background:var(--green); color:#000; text-shadow:none; }
+  .botbar .spacer{ flex:1; }
+  .botbar .blink{ animation: blink 1s steps(2) infinite; }
+  @keyframes blink{ 50%{opacity:0} }
+
+  /* Cursor */
+  .cursor{
+    display:inline-block; width:8px; height:14px; vertical-align:-2px;
+    background:var(--green);
+    box-shadow:0 0 8px var(--green);
+    animation: blink 1.05s steps(2) infinite;
+    margin-left:2px;
+  }
+
+  /* Boot screen */
+  #boot{
+    position:fixed; inset:0; background:#000; z-index:30;
+    padding:32px 40px;
+    overflow:hidden;
+  }
+  #boot pre{
+    color:var(--green); font-size:12px; line-height:1.4;
+    margin:0; white-space:pre-wrap;
+  }
+  #boot.fade{ animation: bootfade .6s forwards; }
+  @keyframes bootfade{ to{opacity:0; visibility:hidden;} }
+
+  /* ============ MOBILE / TABLET ============ */
+  @media (max-width: 900px){
+    :root{ --topbar-h: 30px; --botbar-h: 22px; }
+    body{ font-size:13px; }
+    .topbar{ font-size:11px; padding:0 10px; }
+    .topbar .left, .topbar .right{ gap:10px; }
+    .topbar .hide-sm{ display:none; }
+    .stage{
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr auto;
+    }
+    /* Hide side meters/procs/ascii on mobile — keep only log + quote */
+    .side{
+      grid-template-rows: auto;
+      max-height: 44vh;
+    }
+    .side > .pane:nth-child(n+2){ display:none; }
+    .pane{ padding:10px 12px; }
+    .pane h2{ font-size:10px; margin-bottom:8px; }
+    .quote{ min-height:0; padding:12px 14px; }
+    .quote .text{ font-size:14px; min-height:60px; }
+    .botbar{ font-size:10px; }
+    .botbar .seg{ padding:0 8px; }
+    .botbar .seg.hide-sm{ display:none; }
+    #boot{ padding:18px 14px; }
+    #boot pre{ font-size:10.5px; }
+  }
+
+  @media (max-width: 480px){
+    body{ font-size:12px; }
+    .topbar{ font-size:10px; padding:0 8px; }
+    .topbar .left, .topbar .right{ gap:8px; }
+    #log{ font-size:11px; line-height:1.4; }
+    .pane h2{ font-size:9px; letter-spacing:.15em; }
+    .quote .text{ font-size:13px; }
+    .botbar .seg{ padding:0 6px; }
+  }
+
+  /* very narrow phones – trim more */
+  @media (max-width: 360px){
+    .topbar .uptime, .topbar .load { display:none; }
+  }
+</style>
+</head>
+<body class="crt flicker">
+
+<!-- Boot screen -->
+<div id="boot"><pre id="bootText"></pre></div>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="left">
+    <span><span class="dot"></span><b id="host">oeapp.de</b> <span class="hide-sm">&nbsp;//&nbsp; tty1</span></span>
+    <span class="hide-sm">static <b>gh-pages</b></span>
+    <span class="uptime">uptime <b id="uptime">00:00:00</b></span>
+  </div>
+  <div class="right">
+    <span class="load">load <b id="load">0.42 0.36 0.30</b></span>
+    <span id="now" class="hide-sm"></span>
+    <span class="hide-sm">[ <b>tls ok</b> ]</span>
+  </div>
+</div>
+
+<!-- Stage -->
+<div class="stage">
+  <div class="pane">
+    <h2>// system.log &nbsp; ── &nbsp; tail -f /var/log/oeapp.log</h2>
+    <div id="log"></div>
+  </div>
+
+  <div class="side">
+    <div class="pane">
+      <h2>// quote.daemon</h2>
+      <div class="quote">
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
+        <div class="label" id="qLabel"></div>
+        <div class="text" id="qText"></div>
+        <div class="author" id="qAuthor"></div>
+      </div>
+    </div>
+
+    <div class="pane meters">
+      <h2>// resources</h2>
+      <div class="row"><span class="lbl">CPU</span><span class="bar"><i id="bCpu" style="width:18%"></i></span><span class="val" id="vCpu">18%</span></div>
+      <div class="row"><span class="lbl">MEM</span><span class="bar"><i id="bMem" style="width:43%"></i></span><span class="val" id="vMem">43%</span></div>
+      <div class="row"><span class="lbl">NET</span><span class="bar"><i id="bNet" style="width:9%"></i></span><span class="val" id="vNet">9%</span></div>
+      <div class="row"><span class="lbl">DISK I/O</span><span class="bar"><i id="bDisk" style="width:31%"></i></span><span class="val" id="vDisk">31%</span></div>
+      <div class="row"><span class="lbl">ENTROPY</span><span class="bar"><i id="bEnt" style="width:78%"></i></span><span class="val" id="vEnt">78%</span></div>
+    </div>
+
+    <div class="pane">
+      <h2>// processes &nbsp; (top -bn1)</h2>
+      <div class="ps">
+        <div class="head"><span>PID</span><span>NAME</span><span>CPU</span><span>MEM</span></div>
+        <div id="ps"></div>
+      </div>
+    </div>
+
+    <div class="pane">
+      <h2>// signature</h2>
+      <pre class="ascii">
+   ____  _____    _    ____  ____
+  / __ \| ____|  / \  |  _ \|  _ \
+ | |  | |  _|   / _ \ | |_) | |_) |
+ | |__| | |___ / ___ \|  __/|  __/
+  \____/|_____/_/   \_\_|   |_|.de
+</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom bar -->
+<div class="botbar">
+  <div class="seg active">F1 ▸ status</div>
+  <div class="seg">F2 ▸ quotes</div>
+  <div class="seg hide-sm">F3 ▸ jobs</div>
+  <div class="seg hide-sm">F4 ▸ kernel</div>
+  <div class="seg hide-sm">F5 ▸ trace</div>
+  <div class="spacer"></div>
+  <div class="seg"><span class="blink">●</span>&nbsp; rec</div>
+  <div class="seg hide-sm">oeapp.de // © <span id="year"></span></div>
+</div>
+
+<script>
+/* ============================================================
+   oeapp.de terminal — Frontend
+   ============================================================ */
+
+const $ = sel => document.querySelector(sel);
+
+/* Statische Seite (GitHub Pages): früher kamen diese Werte vom PHP-Server,
+   jetzt werden sie im Browser erzeugt. */
+const pad2 = n => String(n).padStart(2,"0");
+function stamp(d = new Date()){
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+const SRV = {
+  host:  "oeapp.de",
+  os:    "6.8.0-oe",
+  load:  ["0.42","0.36","0.30"],
+  mem:   "43%",
+  upsec: Math.floor(86400 * (3 + Math.random() * 27)),   // 3–30 Tage "Uptime"
+  now:   stamp(new Date(Date.now() - 86400000 * (1 + Math.random() * 3))),
+};
+
+const QUOTES = [
+  { tag:"@reflection",   a:"Henry Ford",                 t:"Wer immer tut, was er schon kann, bleibt immer das, was er schon ist." },
+  { tag:"@philosophie",  a:"Johann Wolfgang von Goethe", t:"Es ist nicht genug zu wissen — man muss auch anwenden. Es ist nicht genug zu wollen — man muss auch tun." },
+  { tag:"@physik",       a:"Albert Einstein",            t:"Phantasie ist wichtiger als Wissen, denn Wissen ist begrenzt." },
+  { tag:"@strategie",    a:"Albert Einstein",            t:"In der Mitte von Schwierigkeiten liegen die Möglichkeiten." },
+  { tag:"@politik",      a:"Konrad Adenauer",            t:"Nehmen Sie die Menschen, wie sie sind, andere gibt es nicht." },
+  { tag:"@pragmatismus", a:"Helmut Schmidt",             t:"Wer Visionen hat, sollte zum Arzt gehen." },
+  { tag:"@haltung",      a:"Bertolt Brecht",             t:"Wer kämpft, kann verlieren. Wer nicht kämpft, hat schon verloren." },
+  { tag:"@empathie",     a:"Henry Ford",                 t:"Das Geheimnis des Erfolges ist, den Standpunkt des anderen zu verstehen." },
+  { tag:"@sprache",      a:"Ludwig Wittgenstein",        t:"Die Grenzen meiner Sprache bedeuten die Grenzen meiner Welt." },
+  { tag:"@management",   a:"Peter Drucker",              t:"Die beste Methode, die Zukunft vorherzusagen, ist, sie zu gestalten." },
+  { tag:"@management",   a:"Peter Drucker",              t:"Effizienz heißt, die Dinge richtig zu tun. Effektivität heißt, die richtigen Dinge zu tun." },
+  { tag:"@metrics",      a:"Peter Drucker",              t:"Was du nicht messen kannst, kannst du nicht steuern." },
+  { tag:"@culture",      a:"Peter Drucker",              t:"Kultur isst Strategie zum Frühstück." },
+  { tag:"@innovation",   a:"Steve Jobs",                 t:"Innovation unterscheidet einen Anführer von einem Mitläufer." },
+  { tag:"@leben",        a:"Steve Jobs",                 t:"Deine Zeit ist begrenzt, also vergeude sie nicht damit, das Leben eines anderen zu leben." },
+  { tag:"@design",       a:"Steve Jobs",                 t:"Einfach kann schwerer sein als kompliziert." },
+  { tag:"@spirit",       a:"Steve Jobs",                 t:"Bleibt hungrig, bleibt töricht." },
+  { tag:"@existenz",     a:"Jean-Paul Sartre",           t:"Der Mensch ist nichts anderes als das, wozu er sich macht." },
+  { tag:"@stoa",         a:"Friedrich Nietzsche",        t:"Was uns nicht umbringt, macht uns stärker." },
+  { tag:"@theorie",      a:"Kurt Lewin",                 t:"Es gibt nichts Praktischeres als eine gute Theorie." },
+];
+let lastQuote = -1;
+function pickQuote(){
+  let i;
+  do { i = Math.floor(Math.random() * QUOTES.length); } while (i === lastQuote && QUOTES.length > 1);
+  lastQuote = i;
+  return QUOTES[i];
+}
+
+// Startzustand (vorher serverseitig gerendert)
+(function initStatic(){
+  const q = pickQuote();
+  $("#qLabel").textContent = q.tag.toUpperCase();
+  $("#qText").textContent = `„${q.t}"`;
+  $("#qAuthor").innerHTML = `— <b>${q.a}</b>`;
+  $("#now").textContent = stamp();
+  $("#year").textContent = new Date().getFullYear();
+})();
+
+const PROCS = [
+  { pid: 1,    name:"systemd",            cpu: 0.1, mem: 0.4 },
+  { pid: 412,  name:"oeapp-core",         cpu: 12.4, mem: 8.2 },
+  { pid: 514,  name:"quote.daemon",       cpu: 0.6, mem: 1.1 },
+  { pid: 612,  name:"render-engine",      cpu: 4.2, mem: 5.5 },
+  { pid: 781,  name:"nginx",              cpu: 2.3, mem: 4.1 },
+  { pid: 902,  name:"index.worker",       cpu: 7.1, mem: 3.4 },
+  { pid: 1024, name:"crypt.gatekeeper",   cpu: 0.4, mem: 0.6 },
+  { pid: 1337, name:"observability",      cpu: 1.8, mem: 2.0 },
+];
+
+/* -------- BOOT (dynamisch mit echten Server-Daten) -------- */
+
+function bootLines(){
+  return [
+    `[    0.000000] Linux version ${SRV.os || '6.8.0-oe'} (oeapp@build)`,
+    "[    0.012043] Command line: BOOT_IMAGE=/boot/vmlinuz-oe root=UUID=oeapp ro quiet splash",
+    "[    0.034210] CPU0: oe-virt @ 2.40GHz",
+    `[    0.061772] Memory: usage ${SRV.mem || '—'}`,
+    "[    0.094104] Initializing cgroup subsys cpuset",
+    "[    0.122418] EXT4-fs (sda1): mounted filesystem with ordered data mode",
+    "[    0.182013] systemd[1]: Detected architecture x86-64.",
+    `[    0.244908] systemd[1]: Set hostname to <${SRV.host}>.`,
+    "[    0.319812]   OK   Reached target Local File Systems.",
+    "[    0.401122]   OK   Started Network Manager.",
+    "[    0.488210]   OK   Started nginx.service (static, gh-pages)",
+    "[    0.512908]   OK   Started quote.daemon.service",
+    "[    0.601122]   OK   Started render-engine.service",
+    "[    0.702010]   OK   Reached target Multi-User System.",
+    "",
+    `Welcome to ${SRV.host} (tty1)`,
+    "",
+    "login: oe",
+    "password: ********",
+    `Last login: ${SRV.now} on tty1`,
+    "",
+    "$ ./oeapp --watch --verbose",
+  ];
+}
+
+async function bootAnim(){
+  const el = $("#bootText");
+  for (const line of bootLines()){
+    el.textContent += line + "\n";
+    await sleep(line.startsWith("[") ? 28 + Math.random()*55 : 100 + Math.random()*110);
+  }
+  await sleep(420);
+  $("#boot").classList.add("fade");
+  setTimeout(()=> $("#boot").style.display="none", 700);
+}
+
+/* -------- LOG -------- */
+
+function ts(){
+  const d = new Date();
+  const p = n => String(n).padStart(2,"0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3,"0")}`;
+}
+
+const log = $("#log");
+const MAX_LINES = 200;
+function addLine(html){
+  const div = document.createElement("div");
+  div.className = "line";
+  div.innerHTML = html;
+  log.appendChild(div);
+  while (log.children.length > MAX_LINES) log.removeChild(log.firstChild);
+  log.scrollTop = log.scrollHeight;
+}
+function fmt(level, msg){
+  const cls = {OK:"ok", WARN:"warn", ERR:"err", DBG:"dim", "→":"arrow"}[level] || "";
+  return `<span class="ts">${ts()}</span>  <span class="${cls}">[${level}]</span>  ${msg}`;
+}
+
+const HOSTS = ["edge-01.oeapp.de","worker-eu-3","cache-fra-7","db-primary","db-replica-2","cdn-04","gateway-tls"];
+const PATHS = ["/api/v1/index","/api/v1/users/9281","/api/v1/jobs/run","/internal/metrics","/static/app.js","/health","/auth/token","/?api=quote","/?api=stats"];
+const FILES = ["/etc/oeapp/config.toml","/var/lib/oeapp/index.bin","/tmp/render-72f.cache","/srv/oeapp/store/0a/9c/4f.bin","/proc/cpuinfo"];
+const TASKS = ["indexing batch","compiling shader cache","tokenizing corpus","computing embeddings","rebalancing shards","vacuuming WAL","warming cache","reticulating splines","diffusing latent space","training quote.classifier","syncing replica","GC sweep","emitting OTEL spans","rotating credentials","decoding stream"];
+const VERBS = ["fetched","accepted","rejected","queued","dispatched","completed","retried","scheduled"];
+const rand = a => a[Math.floor(Math.random()*a.length)];
+const rint = (a,b) => a + Math.floor(Math.random()*(b-a+1));
+
+function genHttpLine(){
+  const code = rand([200,200,200,200,200,201,204,301,302,400,401,404,500,503]);
+  const cls = code<300 ? "ok" : code<400 ? "dim" : code<500 ? "warn" : "err";
+  const ms = rint(2,420);
+  const path = rand(PATHS);
+  const ip = `${rint(10,200)}.${rint(0,255)}.${rint(0,255)}.${rint(1,254)}`;
+  return fmt("→", `<span class="dim">${ip}</span> "GET <span class="path">${path}</span>" <span class="${cls}">${code}</span> <span class="num">${ms}ms</span> ua=oeapp/1.0`);
+}
+function genJobLine(){
+  const id = "job-" + Math.random().toString(36).slice(2,8);
+  return fmt("OK", `<span class="path">${id}</span> ${rand(VERBS)} — ${rand(TASKS)} <span class="dim">on</span> <span class="path">${rand(HOSTS)}</span>`);
+}
+function genMetric(){
+  const k = rand(["latency.p50","latency.p99","qps","mem.rss","gc.pause"]);
+  const v = k==="qps" ? rint(80,1400) : k==="mem.rss" ? (rint(380,820)+"MB") : (rint(1,140)+"ms");
+  return fmt("DBG", `metric <span class="dim">${k}</span> = <span class="num">${v}</span>`);
+}
+function genWarn(){ return fmt("WARN", `slow query on <span class="path">${rand(HOSTS)}</span> took <span class="num">${rint(420,2100)}ms</span>`); }
+function genErr(){  return fmt("ERR",  `transient ${rand(["DNS","TLS","upstream","backoff"])} on <span class="path">${rand(HOSTS)}</span> — retrying`); }
+function genFs(){   return fmt("DBG",  `${rand(["read","write","mmap","fsync"])} <span class="path">${rand(FILES)}</span> <span class="num">${rint(1,4096)}KB</span>`); }
+function genLine(){
+  const r = Math.random();
+  if (r < 0.42) return genHttpLine();
+  if (r < 0.66) return genJobLine();
+  if (r < 0.80) return genMetric();
+  if (r < 0.88) return genFs();
+  if (r < 0.95) return genWarn();
+  return genErr();
+}
+
+async function progressLine(label, totalSteps=24){
+  const wrap = document.createElement("div");
+  wrap.className = "line";
+  log.appendChild(wrap);
+  for (let i=0; i<=totalSteps; i++){
+    const pct = Math.round(i/totalSteps*100);
+    wrap.innerHTML = `<span class="ts">${ts()}</span>  <span class="ok">[OK]</span>  ${label}  <span class="dim">[</span>${"█".repeat(i)}${"░".repeat(totalSteps-i)}<span class="dim">]</span>  <span class="num">${pct}%</span>`;
+    await sleep(40 + Math.random()*70);
+  }
+  log.scrollTop = log.scrollHeight;
+}
+async function asciiSpinner(label, ms=1600){
+  const frames = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"];
+  const wrap = document.createElement("div");
+  wrap.className = "line";
+  log.appendChild(wrap);
+  const start = performance.now();
+  let i = 0;
+  while (performance.now() - start < ms){
+    wrap.innerHTML = `<span class="ts">${ts()}</span>  <span class="warn">${frames[i++%frames.length]}</span>  ${label}`;
+    await sleep(80);
+  }
+  wrap.innerHTML = `<span class="ts">${ts()}</span>  <span class="ok">✓</span>  ${label} <span class="dim">— done</span>`;
+}
+async function sectionDivider(title){
+  addLine(`<span class="dim">────────────────────────────────  ${title}  ────────</span>`);
+}
+
+/* -------- QUOTE: lokal aus QUOTES -------- */
+
+async function showQuote(){
+  const q = pickQuote();
+  const lab = $("#qLabel"), txt = $("#qText"), aut = $("#qAuthor");
+  lab.textContent = "FETCH quote.daemon";
+  txt.textContent = ""; aut.textContent = "";
+  await sleep(220);
+  lab.textContent = "DECRYPTING …";
+  await sleep(280);
+  lab.textContent = (q.tag || "@quote").toUpperCase();
+  const full = `„${q.t}"`;
+  for (let i=0; i<=full.length; i++){
+    txt.innerHTML = full.slice(0,i) + '<span class="cursor"></span>';
+    await sleep(14 + Math.random()*22);
+  }
+  txt.innerHTML = full;
+  await sleep(140);
+  aut.innerHTML = `— <b>${q.a}</b>`;
+  addLine(fmt("OK", `quote.daemon emitted <span class="path">${q.tag}</span> — <span class="ok">"${q.t.length>60? q.t.slice(0,60)+"…" : q.t}"</span> <span class="dim">— ${q.a}</span>`));
+}
+
+/* -------- METERS / PROCS / CLOCK -------- */
+
+function jitter(cur, min, max, step=8){
+  let v = cur + (Math.random()*2-1)*step;
+  if (v<min) v = min + Math.random()*step;
+  if (v>max) v = max - Math.random()*step;
+  return v;
+}
+let m = { cpu:18, mem:43, net:9, disk:31, ent:78 };
+function tickMeters(){
+  m.cpu  = jitter(m.cpu, 6, 92, 9);
+  m.net  = jitter(m.net, 1, 96, 18);
+  m.disk = jitter(m.disk, 2, 88, 14);
+  m.ent  = jitter(m.ent, 60, 99, 4);
+  for (const k of ["cpu","net","disk","ent"]){
+    const v = Math.round(m[k]);
+    document.getElementById("b"+k[0].toUpperCase()+k.slice(1)).style.width = v+"%";
+    document.getElementById("v"+k[0].toUpperCase()+k.slice(1)).textContent = v+"%";
+  }
+  $("#load").textContent = (m.cpu/100*4).toFixed(2)+" "+(m.cpu/100*3.4).toFixed(2)+" "+(m.cpu/100*2.7).toFixed(2);
+}
+function renderProcs(){
+  const html = PROCS
+    .map(p => ({...p, cpu: Math.max(0, p.cpu + (Math.random()*2-1)*1.2), mem: Math.max(0, p.mem + (Math.random()*2-1)*0.4)}))
+    .sort((a,b)=>b.cpu-a.cpu)
+    .map(p => `<div class="row${p.name==='systemd'?' dim':''}">
+        <span class="name dim">${p.pid}</span>
+        <span class="name">${p.name}</span>
+        <span class="num">${p.cpu.toFixed(1)}</span>
+        <span class="num">${p.mem.toFixed(1)}</span>
+      </div>`).join("");
+  $("#ps").innerHTML = html;
+}
+const startedAt = Date.now();
+function tickClock(){
+  const d = new Date();
+  const p = n => String(n).padStart(2,"0");
+  const nowEl = $("#now");
+  if (nowEl) nowEl.textContent = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  // Echte Server-Uptime als Basis + JS-Drift
+  const s = (SRV.upsec || 0) + Math.floor((Date.now()-startedAt)/1000);
+  const hh = Math.floor(s/3600), mm = Math.floor(s/60)%60, ss = s%60;
+  $("#uptime").textContent = `${p(hh)}:${p(mm)}:${p(ss)}`;
+}
+
+/* -------- Stats periodisch nachziehen (sanft) -------- */
+
+function refreshStats(){
+  const load = $("#load").textContent;
+  addLine(fmt("DBG", `stats refreshed — load=<span class="num">${load}</span> mem=<span class="num">${Math.round(m.mem)}%</span> host=<span class="path">gh-pages</span>`));
+}
+
+/* -------- MAIN -------- */
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+async function main(){
+  await bootAnim();
+
+  addLine(`<span class="ok">★</span>  ${SRV.host} <span class="dim">— static build</span> — process monitor attached.`);
+  addLine(fmt("OK","quote.daemon online — pulling from local store"));
+  await sleep(300);
+
+  await sectionDivider("startup self-check");
+  await progressLine("preflight checks", 28);
+  await progressLine("warming cache", 32);
+  await asciiSpinner("verifying tls chain (Let's Encrypt R3)");
+  await asciiSpinner(`connecting to db-primary as ${SRV.host}`);
+  await sectionDivider("steady state");
+
+  // Erstes Zitat zeigen wir schon serverseitig — direkt nächstes laden:
+  setTimeout(showQuote, 4000);
+  setInterval(showQuote, 12000);
+
+  setInterval(() => {
+    const burst = 1 + (Math.random()<0.25 ? rint(1,3) : 0);
+    for (let i=0; i<burst; i++) addLine(genLine());
+  }, 380);
+
+  setInterval(async () => {
+    const r = Math.random();
+    if (r < 0.18){
+      await progressLine(rand(["rebuilding index","compacting WAL","retraining ranker","encoding corpus"]), rint(20,40));
+    } else if (r < 0.32){
+      await asciiSpinner(rand(["fsync /var/lib/oeapp","handshake with cdn-04","scrubbing old sessions"]), rint(900,2200));
+    } else if (r < 0.40){
+      await sectionDivider(rand(["heartbeat","scheduled tick","cron @ * */1 * * *","gc pass"]));
+    }
+  }, 4500);
+
+  setInterval(tickMeters, 800);
+  setInterval(renderProcs, 1200);
+  setInterval(tickClock, 1000);
+  setInterval(refreshStats, 30000);
+  tickMeters(); renderProcs(); tickClock();
+}
+
+main();
+</script>
+</body>
+</html>

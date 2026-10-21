@@ -1,0 +1,7 @@
+# Altbestand vom Mittwald-Hosting — gehört nicht ins öffentliche Repo
+stats/
+cgi-bin/
+.htaccess
+index.php
+
+.DS_Store
