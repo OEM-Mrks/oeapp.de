@@ -113,7 +113,7 @@ function bootLines(){
     "[    0.488210]   OK   Started nginx.service (static, gh-pages)",
     "[    0.512908]   OK   Started quote.daemon.service",
     "[    0.601122]   OK   Started render-engine.service",
-    "[    0.655311]   OK   Mounted /usr/local/oeapp/bin (10 apps)",
+    "[    0.655311]   OK   Mounted /usr/local/oeapp/bin (11 apps)",
     "[    0.702010]   OK   Reached target Multi-User System.",
     "",
     `Welcome to ${SRV.host} (tty1)`,
@@ -611,10 +611,13 @@ async function shutdown(){
 function initKeys(){
   document.addEventListener("keydown", e => {
     if (halted){ e.preventDefault(); return; }
-    const fk = { F1:"log", F2:"apps", F3:"snake", F4:"blocks" }[e.key];
+    // Apps mit eigener F-Tasten-Leiste (videothek) bekommen F1–F10 selbst
+    const appFkeys = current && current.inst.fkeys && /^F([1-9]|10)$/.test(e.key);
+    const fk = !appFkeys && { F1:"log", F2:"apps", F3:"snake", F4:"blocks" }[e.key];
     if (fk){ e.preventDefault(); go(fk); return; }
     if (current){
-      if (e.key === "Escape"){ e.preventDefault(); exitApp(); return; }
+      // ESC: erst darf die App selbst zurückgehen, sonst wird sie beendet
+      if (e.key === "Escape"){ e.preventDefault(); if (!(current.inst.escape && current.inst.escape())) exitApp(); return; }
       current.ctx.keys.add(normKey(e.key));
       if (current.inst.key && current.inst.key(e) === true) e.preventDefault();
       return;

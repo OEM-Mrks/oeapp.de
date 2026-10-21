@@ -15,6 +15,7 @@ Im Prompt den Namen eintippen, `apps` bzw. **F2** für die Auswahl, **ESC** zur�
 | `pong`     | Tischtennis gegen den Computer (`pong --2p` zu zweit)       |
 | `chomp`    | Labyrinth mit vier Geistern (Pac-Man-artig, eigener Code)   |
 | `race`     | Pseudo-3D-Autorennen im Vektor-Look mit Checkpoints         |
+| `video`    | Videothek-Kasse von 1994 im DOS-Look: Verleih, Rückgabe, Bon   |
 | `swan`     | 108-Minuten-Countdown aus „Lost“ (`swan --fast` ab 4:00)    |
 | `atm`      | Taschencomputer am Geldautomaten (T2-Hommage, Animation)    |
 | `fsociety` | Fake-Hacker-Shell im Stil von „Mr. Robot“, `/help`          |

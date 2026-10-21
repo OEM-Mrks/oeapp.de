@@ -423,3 +423,79 @@ pre.atm{ margin:0; font-size:12px; line-height:1.2; color:var(--green); }
 .shard-inner{ position:absolute; left:0; top:0; }
 .halt{ position:fixed; inset:0; z-index:45; background:#000; padding:14px 16px; }
 .halt .cursor{ width:10px; height:18px; }
+
+/* =============================================================
+   video: DOS-Kassensystem (Blau wie 1994, VGA-Farben)
+   ============================================================= */
+.dos{
+  --d-bg:#0000aa; --d-fg:#c0c0c0; --d-hi:#ffffff; --d-cy:#00aaaa; --d-ye:#ffff55; --d-re:#ff5555; --d-gr:#55ff55;
+  flex:1; min-height:0; display:flex; flex-direction:column;
+  background:var(--d-bg); color:var(--d-fg); text-shadow:0 0 1px rgba(255,255,255,.25);
+  font-size:13px; line-height:1.35; border:2px solid #000; box-shadow:0 0 0 1px var(--d-cy);
+}
+.dos b{ color:var(--d-hi); font-weight:600; }
+.dos .dim{ color:#7f86c7; }
+.dos .ok{ color:var(--d-gr); }
+.dos .warn{ color:var(--d-ye); }
+.dos .err{ color:var(--d-re); }
+.dos-head{ display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; background:var(--d-cy); color:#000; padding:2px 10px; font-weight:600; text-shadow:none; }
+.dos-main{ flex:1; min-height:0; overflow:auto; padding:12px; }
+.dos-msg{ background:#000080; color:var(--d-ye); padding:2px 10px; border-top:1px solid var(--d-cy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dos-msg.ok{ color:var(--d-gr); } .dos-msg.err{ color:var(--d-re); } .dos-msg.warn{ color:var(--d-ye); }
+.dos-keys{ display:flex; flex-wrap:wrap; background:#000; }
+.dos-key{ font:inherit; font-size:12px; background:#000; color:var(--d-cy); border:0; padding:3px 8px; cursor:pointer; text-shadow:none; }
+.dos-key b{ color:var(--d-hi); margin-right:4px; }
+.dos-key:hover{ background:var(--d-cy); color:#000; }
+.dos-key.off{ opacity:.4; cursor:default; }
+.dos-box{ border:3px double var(--d-fg); padding:10px 12px 12px; margin:6px 0 14px; position:relative; min-width:0; }
+.dos-box-t{ position:absolute; top:-0.8em; left:12px; background:var(--d-bg); color:var(--d-hi); padding:0 6px; font-weight:600; }
+.dos-box.narrow{ max-width:560px; }
+.dos-cols{ display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start; }
+.dos-cols > .dos-box{ flex:1 1 360px; }
+.dos-cols > .dos-box.dos-side{ flex:0 1 auto; }
+.dos-f{ display:flex; align-items:center; gap:10px; margin:6px 0; }
+.dos-f > span{ min-width:150px; color:var(--d-hi); }
+.dos-in{
+  font:inherit; color:#000; background:var(--d-cy); border:0; outline:0; padding:1px 6px;
+  flex:1; max-width:340px; min-width:0; text-shadow:none; caret-color:#000;
+}
+.dos-in:focus{ background:#55ffff; }
+.dos-in::placeholder{ color:#005f5f; }
+.dos-hint{ color:#7f86c7; font-size:12px; margin-top:8px; }
+.dos-pre{ margin:6px 0 0; white-space:pre; overflow-x:auto; font:inherit; }
+.dos-big{ font-size:20px; color:var(--d-ye); }
+.dos-th{ color:var(--d-hi); text-decoration:underline; }
+.dos-row{ cursor:pointer; }
+.dos-row:hover{ background:var(--d-cy); color:#000; }
+.dos-sum{ color:var(--d-hi); }
+.dos-menu .dos-item{ padding:1px 6px; cursor:pointer; white-space:pre; }
+.dos-menu .dos-item b{ color:var(--d-ye); margin-right:6px; }
+.dos-menu .dos-item.sel, .dos-menu .dos-item:hover{ background:var(--d-fg); color:#000; }
+.dos-menu .dos-item.sel b, .dos-menu .dos-item:hover b, .dos-menu .dos-item.sel .dim{ color:#000; }
+.dos-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.dos-btn{ font:inherit; background:var(--d-fg); color:#000; border:0; padding:2px 10px; cursor:pointer; box-shadow:3px 3px 0 #000; text-shadow:none; }
+.dos-btn b{ color:#aa0000; }
+.dos-btn:active{ transform:translate(2px,2px); box-shadow:1px 1px 0 #000; }
+.dos-center{ display:flex; flex-direction:column; align-items:center; gap:4px; }
+.dos-logo{ margin:0; color:var(--d-cy); line-height:1.15; }
+.dos-title{ font-size:28px; font-weight:600; letter-spacing:.3em; color:var(--d-ye); }
+.dos-sub{ color:#7f86c7; font-size:12px; margin-bottom:12px; text-align:center; }
+.dos-card{ margin:0; color:var(--d-ye); line-height:1.2; }
+.drawer-wrap{ overflow:hidden; padding:10px 0 30px; }
+.drawer{ margin:0; color:var(--d-fg); transition:transform .25s cubic-bezier(.2,1.6,.4,1); }
+.drawer.open{ transform:translateY(22px); color:var(--d-ye); }
+.receipt-wrap{ display:flex; flex-direction:column; align-items:center; }
+.receipt{
+  margin:0; background:#f4f1e6; color:#222; text-shadow:none; padding:14px 16px; width:max-content; max-width:100%;
+  font-size:12px; line-height:1.3; white-space:pre; overflow:auto; max-height:60vh;
+  box-shadow:0 6px 18px rgba(0,0,0,.6); border-top:6px dashed #f4f1e6;
+}
+@media (max-width: 600px){
+  .dos{ font-size:11px; }
+  .dos-f{ flex-direction:column; align-items:stretch; gap:2px; }
+  .dos-f > span{ min-width:0; }
+  .dos-in{ max-width:none; font-size:16px; }   /* 16px: iOS zoomt sonst beim Fokussieren */
+  .dos-title{ font-size:20px; }
+  .dos-logo{ font-size:9px; }
+  .dos-main{ padding:8px; }
+}
