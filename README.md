@@ -33,6 +33,8 @@ live erzeugt, je Spiel ein eigener Track).
 - `js/music.js` – Synthwave-Musik (WebAudio-Sequencer), hört auf das Ereignis `oe:app`
 - `js/apps/*.js` – eine Datei pro Mini-App
 - `fonts/` – IBM Plex Mono, lokal eingebunden (keine externen Requests)
+- `favicon.*`, `apple-touch-icon.png`, `icons/`, `manifest.webmanifest` – Icons für Browser-Tab,
+  Home-Bildschirm (iPhone/Android) und App-Modus
 
 Neue App: Datei in `js/apps/` anlegen, `OE.register({ id, title, desc, start(ctx) })`
 aufrufen und in `index.html` einbinden. Sie taucht dann automatisch in `apps`
