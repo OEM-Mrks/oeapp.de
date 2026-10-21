@@ -19,7 +19,7 @@ Im Prompt den Namen eintippen, `apps` bzw. **F2** für die Auswahl, **ESC** zur�
 | `swan`     | 108-Minuten-Countdown aus „Lost“ (`swan --fast` ab 4:00)    |
 | `atm`      | Atari Portfolio knackt den Geldautomaten (T2-Hommage)       |
 | `fsociety` | Fake-Hacker-Shell im Stil von „Mr. Robot“, `/help`          |
-| `life`     | Conways Game of Life zum Selberzeichnen                     |
+| `life`     | Conways Game of Life zum Selberzeichnen, `?` erklärt per Stimme |
 | `matrix`   | Digitaler Regen                                             |
 
 ## Aufbau

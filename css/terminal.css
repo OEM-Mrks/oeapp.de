@@ -612,3 +612,15 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 .touch .dos-key{ padding:8px 9px; }
 .touch .dos-menu .dos-item{ padding:8px 6px; }
 .dos-actions .dos-btn{ cursor:pointer; }
+
+/* life: Erklärung mit Computerstimme, Text läuft oben mit */
+.life-say{
+  position:absolute; left:8px; right:8px; top:8px; z-index:2;
+  background:rgba(0,0,0,.86); border:1px solid rgba(51,255,102,.5); padding:8px 12px 10px;
+  box-shadow:0 0 18px rgba(51,255,102,.15); cursor:pointer;
+}
+.life-say[hidden]{ display:none; }
+.life-say-h{ font-size:11px; color:var(--green-dim); letter-spacing:.08em; margin-bottom:4px; }
+.life-say-h .dim{ color:var(--green-dim); opacity:.7; }
+.life-say-t{ color:var(--green-bright); font-size:15px; line-height:1.45; min-height:4.35em; }
+@media (max-width:480px){ .life-say-t{ font-size:14px; } }

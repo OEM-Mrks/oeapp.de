@@ -92,9 +92,15 @@ if (TOUCH){
   }
 }
 
+let speechUnlocked = false;
 function unlockAudio(){
   try{
     audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    // iOS spricht (speechSynthesis) nur, wenn das erste Sprechen aus einer Berührung kam: einmal stumm freischalten
+    if (!speechUnlocked && window.speechSynthesis && window.SpeechSynthesisUtterance){
+      speechUnlocked = true;
+      const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u);
+    }
     // stummgeschaltete Kontexte (race in Pause) legen sich danach von selbst wieder schlafen
     for (const a of audioCtxs) if (a.state === "suspended") a.resume().catch(() => {});
   } catch(e){}
