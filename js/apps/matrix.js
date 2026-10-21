@@ -5,21 +5,22 @@ OE.register({
   id: "matrix",
   alias: ["rain"],
   title: "matrix.scr",
-  desc: "Digitaler Regen als Bildschirmschoner.",
+  desc: "Digitaler Regen als Bildschirmschoner, grün und grob wie 1999.",
   start(ctx){
     ctx.el.innerHTML = `<div class="app-bar"><span>matrix <b>.scr</b></span><span class="right">SPACE einfrieren · klick = nachricht · ESC exit</span></div>
-      <div class="app-body"><canvas class="app-canvas" style="width:100%;height:100%"></canvas></div>`;
+      <div class="app-body"><canvas class="app-canvas matrix-cv" style="width:100%;height:100%"></canvas></div>`;
     const body = ctx.el.querySelector(".app-body"), cv = ctx.el.querySelector("canvas"), g = cv.getContext("2d");
 
     const CHARS = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789OEAPP:.=*+<>";
     const MSGS = ["OEAPP.DE", "HALLO FREUND", "4 8 15 16 23 42", "NICHTS IST ECHT", "KNOCK KNOCK"];
-    const FS = ctx.touch ? 14 : 16;
+    const FS = ctx.touch ? 16 : 18;
+    // bewusst grob: in niedriger Auflösung zeichnen und hochskalieren, wie auf einem alten Monitor
+    const PX = 2.2;
     let w, h, cols, drops, frozen = false, acc = 0, msg = null;
 
     function size(){
-      const dpr = window.devicePixelRatio || 1;
       w = body.clientWidth; h = body.clientHeight;
-      cv.width = w * dpr; cv.height = h * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cv.width = Math.ceil(w / PX); cv.height = Math.ceil(h / PX); g.setTransform(1 / PX, 0, 0, 1 / PX, 0, 0);
       cols = Math.ceil(w / FS);
       drops = Array.from({ length: cols }, () => ({ y: Math.random() * h / FS * 1.2 - h / FS * 0.4, v: 0.4 + Math.random() * 0.9 }));
       g.fillStyle = "#000"; g.fillRect(0, 0, w, h);
@@ -27,20 +28,38 @@ OE.register({
 
     function frame(){
       g.fillStyle = "rgba(0,0,0,0.08)"; g.fillRect(0, 0, w, h);
-      g.font = `${FS}px "IBM Plex Mono", ui-monospace, monospace`;
+      g.font = `600 ${FS}px "IBM Plex Mono", ui-monospace, monospace`;
       g.textBaseline = "top";
+      // ab und zu flackert ein Zeichen weiter oben in der Spur um
+      for (let k = 0; k < cols / 6; k++){
+        const i = Math.floor(Math.random() * cols), d = drops[i], yy = Math.floor(d.y - 2 - Math.random() * 14);
+        if (yy < 0) continue;
+        g.fillStyle = "#000"; g.fillRect(i * FS, yy * FS, FS, FS);
+        glyph(CHARS[Math.floor(Math.random() * CHARS.length)], i * FS, yy * FS, "rgba(26,180,70,.75)");
+      }
       drops.forEach((d, i) => {
         const x = i * FS, y = Math.floor(d.y) * FS;
         let ch = CHARS[Math.floor(Math.random() * CHARS.length)];
         // Nachricht: waagerecht in der Bildmitte
         if (msg && i >= msg.col && i < msg.col + msg.text.length && Math.floor(d.y) === msg.row) ch = msg.text[i - msg.col];
-        g.fillStyle = "#c8ffd4"; g.shadowColor = "#33ff66"; g.shadowBlur = 8;
-        g.fillText(ch, x, y);
-        g.shadowBlur = 0;
+        // Kopf hell, das Zeichen dahinter sattgrün (die Spur dunkelt dann von selbst ab)
+        if (d.last != null){ g.fillStyle = "#000"; g.fillRect(x, d.last, FS, FS); glyph(d.lc, x, d.last, "#22e05a"); }
+        glyph(ch, x, y, "#8dffa6", true);
+        d.last = y; d.lc = ch;
         d.y += d.v;
-        if (y > h && Math.random() > 0.95){ d.y = 0; d.v = 0.4 + Math.random() * 0.9; }
+        if (y > h && Math.random() > 0.95){ d.y = 0; d.v = 0.4 + Math.random() * 0.9; d.last = null; }
       });
       if (msg && --msg.ttl <= 0) msg = null;
+    }
+
+    // Katakana gespiegelt wie im Film; Leuchten als zweiter, breiterer Durchgang (billiger als shadowBlur)
+    function glyph(ch, x, y, col, head){
+      const kana = ch >= "ｦ" && ch <= "ﾝ";
+      g.save();
+      if (kana){ g.translate(x + FS * 0.62, y); g.scale(-1, 1); x = 0; y = 0; }
+      if (head){ g.globalAlpha = 0.35; g.fillStyle = "#33ff66"; g.fillText(ch, x - 1, y); g.fillText(ch, x + 1, y); g.globalAlpha = 1; }
+      g.fillStyle = col; g.fillText(ch, x, y);
+      g.restore();
     }
 
     function drop(){

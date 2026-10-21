@@ -624,3 +624,6 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 .life-say-h .dim{ color:var(--green-dim); opacity:.7; }
 .life-say-t{ color:var(--green-bright); font-size:15px; line-height:1.45; min-height:4.35em; }
 @media (max-width:480px){ .life-say-t{ font-size:14px; } }
+
+/* matrix: grobe Pixel, leicht weich und leuchtend wie auf einem alten Monitor */
+.matrix-cv{ image-rendering:pixelated; filter:blur(.45px) brightness(1.2); }
