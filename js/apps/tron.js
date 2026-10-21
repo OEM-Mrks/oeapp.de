@@ -226,7 +226,7 @@ OE.register({
       const me = bikes[0];
       if (state === "ready"){ begin(); }
       if (state !== "running") return;
-      if ((d + 2) % 4 !== me.d && d !== me.d){ me.next = d; ctx.beep(660, 20, "square", 0.02); }
+      if ((d + 2) % 4 !== me.d && d !== me.next){ me.next = d; ctx.beep(660, 20, "square", 0.02); }
     }
     function steerRel(turn){
       if (state !== "running"){ begin(); return; }
@@ -245,7 +245,9 @@ OE.register({
       state = "count"; endT = 0; lastCount = 0; overlay(null);
     }
 
-    // Handy: linke Bildhälfte = links abbiegen, rechte = rechts (wie die Arcade-Lenkung); wischen = Richtung
+    // Handy: dorthin tippen, wo das Rad hinfahren soll – links/rechts vom Rad, wenn es senkrecht
+    // fährt, darüber/darunter, wenn es waagerecht fährt. So passt es in jeder Fahrtrichtung.
+    // Wischen gibt die Richtung direkt vor.
     let sx = 0, sy = 0, down = false;
     cv.addEventListener("pointerdown", e => { down = true; sx = e.clientX; sy = e.clientY; cv.setPointerCapture(e.pointerId); });
     cv.addEventListener("pointerup", e => {
@@ -255,9 +257,11 @@ OE.register({
         steerAbs(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
         return;
       }
-      const r = cv.getBoundingClientRect();
       if (state !== "running"){ begin(); return; }
-      steerRel(e.clientX - r.left < r.width / 2 ? -1 : 1);
+      const r = cv.getBoundingClientRect(), me = bikes[0];
+      const [hx, hy] = head(me), tx = (e.clientX - r.left) / r.width * cols * C, ty = (e.clientY - r.top) / r.height * rows * C;
+      const vertical = me.next % 2 === 0;   // an der schon geplanten Richtung messen, damit schnelle Doppeltipps klappen
+      steerAbs(vertical ? (tx < hx ? 3 : 1) : (ty < hy ? 0 : 2));
     });
     ov.addEventListener("pointerup", () => { if (state !== "running") begin(); });
 
@@ -285,12 +289,11 @@ OE.register({
     const onResize = () => size();
     addEventListener("resize", onResize);
     ctx.buttons(pad, [
-      { label: "⟲", key: "z", aria: "links abbiegen" }, { label: "◀", key: "ArrowLeft" }, { label: "▲", key: "ArrowUp" },
-      { label: "▼", key: "ArrowDown" }, { label: "▶", key: "ArrowRight" }, { label: "⟳", key: "x", aria: "rechts abbiegen" },
+      { label: "◀", key: "ArrowLeft" }, { label: "▲", key: "ArrowUp" }, { label: "▼", key: "ArrowDown" }, { label: "▶", key: "ArrowRight" },
     ]);
     size();
     overlay(`<div class="big" style="color:#5ae8ff;letter-spacing:.5em">T R O N</div><div>Lichtrad-Duell · nicht in die Wände fahren</div>
-      <div class="dim">${ctx.touch ? "links/rechts tippen = abbiegen · wischen = Richtung" : "Pfeiltasten = Richtung · Z/X = links/rechts abbiegen"}</div>
+      <div class="dim">${ctx.touch ? "neben das Rad tippen = dorthin abbiegen · wischen = Richtung" : "Pfeiltasten = Richtung · Z/X = links/rechts abbiegen"}</div>
       <div>${ctx.touch ? "tippen zum Start" : "ENTER = start"}</div>`);
 
     return {
