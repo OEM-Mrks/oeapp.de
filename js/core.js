@@ -113,7 +113,7 @@ function bootLines(){
     "[    0.488210]   OK   Started nginx.service (static, gh-pages)",
     "[    0.512908]   OK   Started quote.daemon.service",
     "[    0.601122]   OK   Started render-engine.service",
-    "[    0.655311]   OK   Mounted /usr/local/oeapp/bin (7 apps)",
+    "[    0.655311]   OK   Mounted /usr/local/oeapp/bin (10 apps)",
     "[    0.702010]   OK   Reached target Multi-User System.",
     "",
     `Welcome to ${SRV.host} (tty1)`,
@@ -323,6 +323,7 @@ function makeCtx(app, args){
   const ctx = {
     el, args, touch: TOUCH, store, beep, esc, sleep, rand, rint,
     alive: true,
+    keys: new Set(),        // gerade gedrückte Tasten (für Pong, Rennen …)
     every(ms, fn){ const id = setInterval(fn, ms); timers.push(() => clearInterval(id)); return id; },
     after(ms, fn){ const id = setTimeout(fn, ms); timers.push(() => clearTimeout(id)); return id; },
     loop(fn){
@@ -344,6 +345,7 @@ function makeCtx(app, args){
         const b = document.createElement("button");
         b.type = "button"; b.textContent = d.label; b.setAttribute("aria-label", d.aria || d.key);
         b.addEventListener("pointerdown", e => { e.preventDefault(); sendKey(d.key); });
+        for (const ev of ["pointerup", "pointercancel", "pointerleave"]) b.addEventListener(ev, () => releaseKey(d.key));
         padEl.appendChild(b);
       }
     },
@@ -401,9 +403,15 @@ function makeCtx(app, args){
   return ctx;
 }
 
+const normKey = k => k.length === 1 ? k.toLowerCase() : k;
+
 function sendKey(key){
-  if (!current || !current.inst || !current.inst.key) return;
-  current.inst.key({ key, code: key, preventDefault(){}, synthetic:true });
+  if (!current || !current.inst) return;
+  current.ctx.keys.add(normKey(key));
+  if (current.inst.key) current.inst.key({ key, code: key, preventDefault(){}, synthetic:true });
+}
+function releaseKey(key){
+  if (current) current.ctx.keys.delete(normKey(key));
 }
 
 function runApp(id, args = []){
@@ -607,6 +615,7 @@ function initKeys(){
     if (fk){ e.preventDefault(); go(fk); return; }
     if (current){
       if (e.key === "Escape"){ e.preventDefault(); exitApp(); return; }
+      current.ctx.keys.add(normKey(e.key));
       if (current.inst.key && current.inst.key(e) === true) e.preventDefault();
       return;
     }
@@ -614,6 +623,8 @@ function initKeys(){
     const cli = $("#cli");
     if (document.activeElement !== cli && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) cli.focus();
   });
+  document.addEventListener("keyup", e => { if (current) current.ctx.keys.delete(normKey(e.key)); });
+  addEventListener("blur", () => { if (current) current.ctx.keys.clear(); });
   document.querySelectorAll(".botbar .seg[data-go]").forEach(s => s.addEventListener("click", () => go(s.dataset.go)));
   // Handys haben keine F-Tasten: dort sprechendere Beschriftung
   if (TOUCH){

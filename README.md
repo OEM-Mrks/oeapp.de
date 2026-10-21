@@ -12,6 +12,9 @@ Im Prompt den Namen eintippen, `apps` bzw. **F2** für die Auswahl, **ESC** zur�
 |------------|-------------------------------------------------------------|
 | `snake`    | Nokia-Klassiker (`snake --walls` mit tödlichen Rändern)     |
 | `blocks`   | Fallende Blöcke im ASCII-Look (Tetris-artig, eigener Code)  |
+| `pong`     | Tischtennis gegen den Computer (`pong --2p` zu zweit)       |
+| `chomp`    | Labyrinth mit vier Geistern (Pac-Man-artig, eigener Code)   |
+| `race`     | Pseudo-3D-Autorennen im Vektor-Look mit Checkpoints         |
 | `swan`     | 108-Minuten-Countdown aus „Lost“ (`swan --fast` ab 4:00)    |
 | `atm`      | Taschencomputer am Geldautomaten (T2-Hommage, Animation)    |
 | `fsociety` | Fake-Hacker-Shell im Stil von „Mr. Robot“, `/help`          |
