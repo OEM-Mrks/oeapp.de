@@ -30,6 +30,63 @@ const SRV = {
 const TOUCH = matchMedia("(pointer: coarse)").matches;
 if (TOUCH) document.body.classList.add("touch");
 
+/* -------- Handy-Anpassungen (vor allem iOS Safari) -------- */
+
+const audioCtxs = [];
+if (TOUCH){
+  // Canvas-Leuchten (shadowBlur) ist in Safari sehr teuer und lässt die Spiele ruckeln
+  const sb = window.CanvasRenderingContext2D && Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, "shadowBlur");
+  if (sb && sb.set) Object.defineProperty(CanvasRenderingContext2D.prototype, "shadowBlur", { ...sb, set(){ sb.set.call(this, 0); } });
+  // 3x-Displays: Canvas mit höchstens 2x rechnen, sieht gleich aus, halb so viele Pixel
+  if ((window.devicePixelRatio || 1) > 2){
+    try{ Object.defineProperty(window, "devicePixelRatio", { get: () => 2, configurable: true }); } catch(e){}
+  }
+
+  // Bildschirmtastatur: Layout auf den sichtbaren Bereich schrumpfen, damit Eingabezeilen nicht verdeckt werden
+  const vv = window.visualViewport, root = document.documentElement;
+  if (vv){
+    const fit = () => {
+      root.style.setProperty("--vvh", vv.height + "px");
+      root.style.setProperty("--vvt", vv.offsetTop + "px");
+      document.body.classList.toggle("kbd", innerHeight - vv.height > 120);
+    };
+    vv.addEventListener("resize", fit);
+    vv.addEventListener("scroll", fit);
+    fit();
+    document.body.classList.add("vv");
+  }
+
+  // Kein Gummiband-Scrollen der ganzen Seite, kein Pinch-Zoom mitten im Spiel
+  const scrollable = el => {
+    for (; el && el !== document.body; el = el.parentElement){
+      const oy = getComputedStyle(el).overflowY;
+      if ((oy === "auto" || oy === "scroll") && el.scrollHeight > el.clientHeight) return true;
+    }
+    return false;
+  };
+  document.addEventListener("touchmove", e => { if (e.touches.length > 1 || !scrollable(e.target)) e.preventDefault(); }, { passive: false });
+  document.addEventListener("gesturestart", e => e.preventDefault());
+  // Long-Press öffnet sonst Kontextmenü/Lupe statt Taste zu halten
+  document.addEventListener("contextmenu", e => { if (!e.target.closest("input, textarea")) e.preventDefault(); });
+
+  // iOS gibt WebAudio erst nach einer echten Berührung frei: alle Kontexte merken und dann aufwecken
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (AC){
+    const Tracked = class extends AC { constructor(...a){ super(...a); audioCtxs.push(this); } };
+    window.AudioContext = Tracked;
+    if (window.webkitAudioContext) window.webkitAudioContext = Tracked;
+  }
+}
+
+function unlockAudio(){
+  try{
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    // stummgeschaltete Kontexte (race in Pause) legen sich danach von selbst wieder schlafen
+    for (const a of audioCtxs) if (a.state === "suspended") a.resume().catch(() => {});
+  } catch(e){}
+}
+for (const ev of ["touchend", "click", "keydown"]) addEventListener(ev, unlockAudio, { capture: true, passive: true });
+
 /* -------- Speicher (Highscores etc.), darf fehlen -------- */
 
 const store = {
@@ -352,15 +409,26 @@ function makeCtx(app, args){
     /* Wischgesten auf einem Element -> Pfeiltasten */
     swipe(target, onTap){
       // Pointer-Events decken Finger und Maus ab (Klick = Tippen)
-      let sx = 0, sy = 0, st = 0, down = false;
+      // Richtung wird schon beim Wischen ausgelöst (nicht erst beim Loslassen), danach
+      // zählt die Fingerposition als neuer Startpunkt: so geht auch Haken schlagen ohne abzusetzen
+      let sx = 0, sy = 0, st = 0, down = false, moved = false;
       target.style.touchAction = "none";
-      target.addEventListener("pointerdown", e => { down = true; sx = e.clientX; sy = e.clientY; st = Date.now(); });
-      target.addEventListener("pointerup", e => {
-        if (!down) return; down = false;
+      target.addEventListener("pointerdown", e => {
+        down = true; moved = false; sx = e.clientX; sy = e.clientY; st = Date.now();
+        try{ target.setPointerCapture(e.pointerId); } catch(err){}
+      });
+      target.addEventListener("pointermove", e => {
+        if (!down) return;
         const dx = e.clientX - sx, dy = e.clientY - sy;
-        if (Math.max(Math.abs(dx), Math.abs(dy)) < 24){ if (onTap && Date.now()-st < 400) onTap(); return; }
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+        moved = true; sx = e.clientX; sy = e.clientY;
         sendKey(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "ArrowRight" : "ArrowLeft") : (dy > 0 ? "ArrowDown" : "ArrowUp"));
       });
+      target.addEventListener("pointerup", () => {
+        if (!down) return; down = false;
+        if (!moved && onTap && Date.now()-st < 400) onTap();
+      });
+      target.addEventListener("pointercancel", () => { down = false; });
     },
     /* Text-Terminal: Ausgabe + eigene Eingabezeile (für swan, fsociety) */
     tty(container, { prompt = "&gt;", placeholder = "" } = {}){
