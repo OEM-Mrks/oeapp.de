@@ -225,10 +225,30 @@ OE.register({
       try { await fn(args); } finally { busy = false; if (ctx.alive) t.lock(false); }
     });
 
+    // Tipp-Menü: Befehle ohne Tastatur, Ziele und Dateien als Untermenü
+    const HOSTS = ["ecorp.com", "allsafe.com", "steelmountain.com"];
+    const per = (cmd, list) => list.map(x => ({ label: x, cmd: `${cmd} ${x}` }));
+    t.chips([
+      { label: "help", cmd: "help" },
+      { label: "ls", cmd: "ls" },
+      { label: "cat ▸", sub: per("cat", Object.keys(FILES).filter(f => !f.endsWith(".enc") && f !== "fsociety.dat")) },
+      { label: "nmap ▸", sub: per("nmap", HOSTS) },
+      { label: "ssh ▸", sub: per("ssh", HOSTS) },
+      { label: "exploit ▸", sub: per("exploit", HOSTS) },
+      { label: "decrypt ▸", sub: per("decrypt", ["fsociety.dat", "ecorp_backup.tar.gz.enc"]) },
+      { label: "mehr ▸", sub: [
+        { label: "whoami", cmd: "whoami" }, { label: "id", cmd: "id" }, { label: "uname", cmd: "uname" },
+        { label: "ifconfig", cmd: "ifconfig" }, { label: "traceroute ▸", sub: per("traceroute", HOSTS) },
+        { label: "ecorp", cmd: "ecorp" }, { label: "mask", cmd: "mask" },
+        { label: "history", cmd: "history" }, { label: "clear", cmd: "clear" },
+      ] },
+      { label: "exit", cmd: "exit" },
+    ]);
+
     setPrompt();
     (async () => {
       await t.type('<span class="dim">Verbindung über 7 Proxies … ok</span>', 10);
-      await t.type('<span class="ok">Hallo, Freund.</span> Tippe <span class="path">/help</span>.', 25);
+      await t.type(ctx.touch ? '<span class="ok">Hallo, Freund.</span> Tippe unten auf einen Befehl.' : '<span class="ok">Hallo, Freund.</span> Tippe <span class="path">/help</span> oder klick unten.', 25);
     })();
   },
 });

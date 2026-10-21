@@ -455,13 +455,54 @@ function makeCtx(app, args){
         if (e.key === "Enter"){
           e.preventDefault(); e.stopPropagation();
           const v = input.value; input.value = "";
+          if (TOUCH){ input.blur(); container.classList.remove("kb"); if (!chipsEl.hidden) renderChips(); }   // Tastatur wieder weg
           if (v.trim()){ hist.push(v); hp = hist.length; }
           onLine(v);
         } else if (e.key === "ArrowUp"){ if (hp > 0) input.value = hist[--hp]; e.preventDefault(); }
         else if (e.key === "ArrowDown"){ hp = Math.min(hist.length, hp + 1); input.value = hist[hp] || ""; e.preventDefault(); }
       });
-      outEl.addEventListener("click", () => { if (!getSelection().toString()) input.focus(); });
+      if (!TOUCH) outEl.addEventListener("click", () => { if (!getSelection().toString()) input.focus(); });
       if (!TOUCH) setTimeout(() => input.focus(), 0);
+
+      /* Tipp-Menü wie die Bot-Tastatur bei Telegram: Befehle als Knöpfe, Untermenüs für
+         Argumente. Auf dem Handy ersetzt es die Eingabezeile, ⌨ holt sie bei Bedarf. */
+      const chipsEl = document.createElement("div");
+      chipsEl.className = "tty-chips";
+      chipsEl.hidden = true;
+      container.appendChild(chipsEl);
+      let chipRoot = [], chipStack = [];
+      function renderChips(){
+        const defs = chipStack.length ? chipStack[chipStack.length - 1].sub : chipRoot;
+        const all = [...defs];
+        if (chipStack.length) all.unshift({ label: "‹ zurück", back: true });
+        if (TOUCH) all.push({ label: container.classList.contains("kb") ? "▾ Tastatur" : "⌨ tippen", kb: true });
+        chipsEl.innerHTML = "";
+        if (chipStack.length){
+          const h = document.createElement("div");
+          h.className = "tty-chips-head"; h.textContent = chipStack.map(c => c.label.replace(/ ?▸$/, "")).join(" › ");
+          chipsEl.appendChild(h);
+        }
+        for (const d of all){
+          const b = document.createElement("button");
+          b.type = "button"; b.textContent = d.label;
+          if (d.back || d.kb) b.className = "aux";
+          b.disabled = input.disabled && !d.back && !d.kb;
+          b.addEventListener("click", () => {
+            if (d.back){ chipStack.pop(); renderChips(); return; }
+            if (d.kb){
+              const on = container.classList.toggle("kb");
+              if (on) input.focus(); else input.blur();
+              renderChips(); return;
+            }
+            if (d.sub){ chipStack.push(d); renderChips(); return; }
+            chipStack = [];
+            renderChips();
+            onLine(d.cmd);
+          });
+          chipsEl.appendChild(b);
+        }
+      }
+      if (TOUCH) container.classList.add("tty-touch");
       const t = {
         input, out: outEl,
         print(html = ""){ const d = document.createElement("div"); d.innerHTML = html; outEl.appendChild(d);
@@ -470,7 +511,12 @@ function makeCtx(app, args){
         clear(){ outEl.innerHTML = ""; },
         prompt(html){ ps.innerHTML = html; },
         onLine(fn){ onLine = fn; },
-        lock(on){ input.disabled = !!on; if (!on && !TOUCH) input.focus(); },
+        lock(on){ input.disabled = !!on; if (!on && !TOUCH) input.focus(); if (!chipsEl.hidden) renderChips(); },
+        /* defs: [{ label, cmd } | { label, sub: [...] }] */
+        chips(defs){
+          chipRoot = defs; chipStack = [];
+          chipsEl.hidden = false; renderChips();
+        },
         async type(html, ms = 18){   // Zeile "eintippen"
           const d = t.print(""); const tmp = document.createElement("div"); tmp.innerHTML = html;
           const text = tmp.textContent;

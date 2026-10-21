@@ -36,7 +36,7 @@ OE.register({
         '<span class="dim">DHARMA INITIATIVE // SYSTEM 3.11 // TERMINAL</span>',
         '<span class="dim">Verbindung zur Station hergestellt.</span>',
         "",
-        "Gib die Zahlenfolge ein und bestätige mit ENTER.",
+        ctx.touch ? "Tippe unten auf die Zahlenfolge." : "Gib die Zahlenfolge ein und bestätige mit ENTER.",
         "Wiederhole das alle 108 Minuten.",
         '<span class="warn">Lass den Zähler nicht auf null laufen.</span>',
         "",
@@ -92,6 +92,7 @@ OE.register({
       }
     });
 
+    t.chips([{ label: SEQ + "  ⏎", cmd: SEQ }]);
     show();
   },
 });

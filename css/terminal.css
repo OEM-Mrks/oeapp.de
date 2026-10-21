@@ -588,3 +588,27 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 .vv.kbd .side{ display:none; }
 .vv.kbd .stage{ grid-template-rows:1fr; }
 .touch .pad button{ white-space:nowrap; overflow:hidden; }
+
+/* Tipp-Menü der Text-Apps (fsociety, swan): Befehle als Knöpfe wie bei Telegram */
+.tty-chips{ display:flex; flex-wrap:wrap; gap:6px; padding-top:8px; }
+.tty-chips[hidden]{ display:none; }
+.tty-chips-head{ width:100%; font-size:11px; color:var(--green-dim); letter-spacing:.05em; }
+.tty-chips button{
+  font:inherit; font-size:12px; background:#000; color:var(--green-bright); text-shadow:inherit;
+  border:1px solid rgba(51,255,102,.45); border-radius:6px; padding:4px 10px; cursor:pointer;
+}
+.tty-chips button:hover:not(:disabled){ background:rgba(51,255,102,.12); }
+.tty-chips button:active:not(:disabled){ background:var(--green); color:#000; text-shadow:none; }
+.tty-chips button.aux{ color:var(--green-dim); border-style:dashed; }
+.tty-chips button:disabled{ opacity:.35; cursor:default; }
+.touch .tty-chips button{ flex:1 1 30%; min-height:44px; padding:6px 4px; font-size:14px; }
+.tty-touch .tty-in{ display:none; }
+.tty-touch.kb .tty-in{ display:flex; }
+
+/* video auf dem Handy: Listenzeilen und Knöpfe groß genug zum Antippen */
+.touch .dos-table{ line-height:2.3; }
+.touch .dos-row{ display:inline-block; width:100%; }
+.touch .dos-btn{ padding:8px 12px; }
+.touch .dos-key{ padding:8px 9px; }
+.touch .dos-menu .dos-item{ padding:8px 6px; }
+.dos-actions .dos-btn{ cursor:pointer; }

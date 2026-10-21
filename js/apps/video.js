@@ -192,8 +192,10 @@ OE.register({
           <div class="dos-sub">Kassensystem VKS 3.2 · (c) 1994 Rewind Video GmbH · Lizenz Filiale 042</div>
           ${box("ANMELDUNG", `${field("Mitarbeiter-Nr.", "vMa", 'maxlength="4" inputmode="numeric" value=""')}
             ${field("Kennwort", "vPw", 'type="password" maxlength="8"')}
-            <div class="dos-hint">Demo: beliebige Nummer, Kennwort egal · ENTER bestätigt</div>`, "narrow")}
+            <div class="dos-actions">${cbtn("login", "Anmelden")}</div>
+            <div class="dos-hint">Demo: beliebige Nummer, Kennwort egal${ctx.touch ? " · einfach „Anmelden“ tippen" : " · ENTER bestätigt"}</div>`, "narrow")}
         </div>`, {
+        acts: { login: () => login() },
         enter: { vPw: () => login(), vMa: (v, i) => { if (!v) return err("Bitte Mitarbeiter-Nr. eingeben."); main.querySelector("#vPw").focus(); } },
       });
       msg("Bitte anmelden.");
@@ -300,8 +302,16 @@ ${rows}</pre>
       screen("newmember", box("NEUES MITGLIED", `
         ${field("Nachname", "vNn", 'maxlength="18"')}${field("Vorname", "vVn", 'maxlength="14"')}
         ${field("Ort", "vOrt", 'maxlength="16" value="Musterstadt"')}
+        <div class="dos-actions">${cbtn("rnd", "Zufallsdaten")}${cbtn("ok", "Anlegen")}</div>
         <div class="dos-hint">Personalausweis vorlegen lassen! · ENTER im letzten Feld legt an</div>`, "narrow"),
-        { back: "member", enter: { vOrt: () => createMember() } });
+        { back: "member", enter: { vOrt: () => createMember() }, acts: { ok: () => createMember(), rnd: randomPerson } });
+    }
+    const NN = ["Wagner", "Hoffmann", "Schulz", "Koch", "Richter", "Klein", "Wolf", "Neumann", "Schwarz", "Braun", "Krüger", "Hartmann"];
+    const VN = ["Andrea", "Thomas", "Sabine", "Michael", "Claudia", "Stefan", "Nicole", "Frank", "Tanja", "Markus", "Silke", "Jörg"];
+    function randomPerson(){
+      main.querySelector("#vNn").value = ctx.rand(NN);
+      main.querySelector("#vVn").value = ctx.rand(VN);
+      main.querySelector("#vOrt").value = ctx.rand(["Musterstadt", "Neudorf", "Altheim"]);
     }
     async function createMember(){
       const nn = main.querySelector("#vNn").value.trim(), vn = main.querySelector("#vVn").value.trim(), ort = main.querySelector("#vOrt").value.trim() || "Musterstadt";
@@ -324,8 +334,11 @@ ${rows}</pre>
     /* ================= Titel & Bestand ================= */
 
     function showTitles(q = ""){
-      screen("titles", box("TITEL & BESTAND", `${field("Titel, Genre oder Nr.", "vT", `maxlength="30" value="${esc(q)}"`)}<div id="vTres"></div>`),
-        { enter: { vT: v => listTitles(v) } });
+      const FILTER = ["alle", "neu", "Action", "Komödie", "SciFi", "Trickfilm", "Drama"];
+      screen("titles", box("TITEL & BESTAND", `${field("Titel, Genre oder Nr.", "vT", `maxlength="30" value="${esc(q)}"`)}
+        <div class="dos-actions">${FILTER.map(f => cbtn("f" + f, f === "neu" ? "Neuheiten" : f === "alle" ? "Alle" : f)).join("")}</div>
+        <div id="vTres"></div>`),
+        { enter: { vT: v => listTitles(v) }, acts: Object.fromEntries(FILTER.map(f => ["f" + f, () => { main.querySelector("#vT").value = f === "alle" ? "" : f; listTitles(f === "alle" ? "" : f); }])) });
       listTitles(q);
     }
     function listTitles(q){
@@ -364,8 +377,10 @@ ${rows}</pre><div class="dos-actions">${ui.member ? btn("v", `für Mitglied ${ui
       const c = nr && cust(nr);
       if (!c){
         screen("rent", box("VERLEIH · MITGLIED", `${field("Mitglieds-Nr.", "vRm", 'maxlength="5" inputmode="numeric"')}
-          <div class="dos-hint">Noch kein Mitglied? F2 → N legt eins an. Demo-Nummern: 10001 – 10005</div>`, "narrow"),
+          <pre class="dos-pre dos-table">${S.customers.map(m => `<span class="dos-row" data-nr="${m.nr}">${m.nr}  ${fit(m.name, 22)} ${fit(m.ort, 12)}</span>`).join("\n")}</pre>
+          <div class="dos-hint">Nummer eingeben oder Mitglied antippen · neu anlegen: F2 → N</div>`, "narrow"),
           { enter: { vRm: v => { if (cust(v)) showRent(v); else err(`Mitglied ${esc(v)} unbekannt.`); } } });
+        main.querySelectorAll(".dos-row").forEach(r => r.addEventListener("click", () => showRent(r.dataset.nr)));
         return;
       }
       ui.member = nr;
@@ -376,7 +391,7 @@ ${rows}</pre><div class="dos-actions">${ui.member ? btn("v", `für Mitglied ${ui
         : `${l.copy}  ${fit(l.title, 30)} bis ${fmtDate(l.due, true)} ${fitL(dm(l.price), 7)}`).join("\n") || '<span class="dim">— noch keine Kassette gescannt —</span>';
       screen("rent", `<div class="dos-cols">
         ${box(`VERLEIH · ${c.nr} ${esc(c.name.toUpperCase())}`, `${field("Kassette scannen", "vScan", 'maxlength="30" placeholder="Nr. wie 1003 oder 1003B, oder Titel"')}
-          <div class="dos-actions">${btn("p", "Scanner (zufällig)")}${btn("x", "letzte stornieren")}${btn("k", "kassieren")}</div>
+          <div class="dos-actions">${btn("r", "aus dem Regal")}${btn("p", "Scanner (zufällig)")}${btn("x", "letzte stornieren")}${btn("k", "kassieren")}</div>
           <pre class="dos-pre dos-table"><span class="dos-th">BAND   TITEL                          RÜCKGABE      PREIS</span>\n${lines}
 <span class="dos-sum">                                                    ───────
                                           SUMME DM ${fitL(dm(total), 7)}</span></pre>
@@ -384,7 +399,7 @@ ${rows}</pre><div class="dos-actions">${ui.member ? btn("v", `für Mitglied ${ui
       </div>`, {
         back: "menu",
         enter: { vScan: v => { if (!v){ if (ui.cart.length) showPay("rent"); else err("Erst eine Kassette scannen."); } else addToCart(v); } },
-        acts: { p: randomScan, x: () => { const i = ui.cart.map(l => l.kind).lastIndexOf("band"); if (i >= 0){ ui.cart.splice(i, 1); showRent(nr); msg("Position storniert."); } }, k: () => ui.cart.length ? showPay("rent") : err("Warenkorb ist leer.") },
+        acts: { r: shelf, p: randomScan, x: () => { const i = ui.cart.map(l => l.kind).lastIndexOf("band"); if (i >= 0){ ui.cart.splice(i, 1); showRent(nr); msg("Position storniert."); } }, k: () => ui.cart.length ? showPay("rent") : err("Warenkorb ist leer.") },
         focus: "vScan",
       });
       if (!ctx.touch) main.querySelector("#vScan").focus();
@@ -416,6 +431,16 @@ ${rows}</pre><div class="dos-actions">${ui.member ? btn("v", `für Mitglied ${ui
       scanBeep();
       showRent(ui.member);
       msg(`PIEP · ${copy} ${esc(t.t)} · ${pr.l} · ${dm(pr.p)} DM · Rückgabe ${fmtDate(S.day + pr.d)}`, "ok");
+    }
+    // Regal: alle Titel mit freien Bändern zum Antippen
+    function shelf(){
+      const list = TITLES.filter(t => freeCopies(t).length);
+      const box_ = main.querySelector("#vHits");
+      box_.innerHTML = `<pre class="dos-pre dos-table"><span class="dos-th">NR.   TITEL                               PREIS</span>\n${
+        list.map(t => `<span class="dos-row" data-id="${t.id}">${t.id}  ${fit(t.t, 34)} ${fitL(dm(PRICE[t.k].p), 5)}</span>`).join("\n")}</pre>`;
+      box_.querySelectorAll(".dos-row").forEach(r => r.addEventListener("click", () => addToCart(r.dataset.id)));
+      msg(`${list.length} Titel im Regal – antippen legt ein Band in den Warenkorb.`);
+      box_.scrollIntoView({ block: "nearest" });
     }
     function randomScan(){
       const free = COPIES.filter(c => !rentalOf(c) && !inCart(c));
@@ -511,9 +536,14 @@ ${rows}</pre><div class="dos-actions">${ui.member ? btn("v", `für Mitglied ${ui
       screen("ret", box("RÜCKGABE", `${field("Kassette scannen", "vRet", 'maxlength="6" placeholder="Band-Nr. wie 1012A"')}
         <div class="dos-actions">${btn("p", "Scanner (zufällig)")}</div>
         <div id="vRetInfo">${info}</div>
-        <div class="dos-hint">Außer Haus: ${S.rentals.map(r => r.copy).join(" ") || "—"}</div>`),
+        <pre class="dos-pre dos-table">${S.rentals.map(r => `<span class="dos-row" data-copy="${r.copy}">${r.copy}  ${fit(titleOf(r.copy).t, 28)} ${late(r) ? `<span class="err">+${late(r)} TG</span>` : ""}</span>`).join("\n") || '<span class="dim">nichts außer Haus</span>'}</pre>
+        <div class="dos-hint">Band antippen oder Nummer scannen</div>`),
         { enter: { vRet: v => v && takeBack(v.toUpperCase()) }, acts: { p: () => { if (!S.rentals.length) return err("Nichts verliehen."); takeBack(ctx.rand(S.rentals).copy); } }, focus: "vRet" });
     }
+    main.addEventListener("click", e => {   // Rückgabe-Liste
+      const r = e.target.closest("[data-copy]");
+      if (r && ui.screen === "ret") takeBack(r.dataset.copy);
+    });
     function takeBack(copy){
       const r = rentalOf(copy);
       if (!r) return err(COPIES.includes(copy) ? `Band ${copy} ist gar nicht verliehen.` : `Band ${esc(copy)} unbekannt.`);

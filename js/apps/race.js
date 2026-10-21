@@ -231,9 +231,6 @@ OE.register({
     let best = +ctx.store.get("race.best", 0) || 0;
     let muted = !!ctx.store.get("race.mute", false);
     const parts = [];   // Funken und Staub
-    // Fahrtwind-Linien: fliegen vom Fluchtpunkt (dorthin, wohin man fährt) nach außen
-    const streaks = [];
-    let foeX = 0, yawVx = 0, aheadX = 0;
 
     function reset(){
       pos = LEN - SEG * 14;   // kurz vor dem Starttor
@@ -326,11 +323,6 @@ OE.register({
     }
 
     /* ---------- Effekte ---------- */
-    function newStreak(any){
-      const side = Math.random() < 0.5 ? -1 : 1, a = 0.05 + Math.random() * 0.55;
-      const ang = side > 0 ? a : Math.PI - a, r = Math.hypot(w / 2, h / 2) * (any ? 0.05 + Math.random() * 0.8 : 0.03 + Math.random() * 0.05);
-      return { x: foeX + Math.cos(ang) * r, y: HZ + Math.sin(ang) * r, vx: 0, vy: 0, v: 0.6 + Math.random() * 0.8 };
-    }
     function sparks(x, y, n){
       for (let k = 0; k < n && parts.length < 180; k++){
         const life = 0.3 + Math.random() * 0.45;
@@ -352,21 +344,6 @@ OE.register({
         p.life -= dt;
         if (p.life <= 0){ parts.splice(k, 1); continue; }
         p.vy += p.grav * dt; p.x += p.vx * dt; p.y += p.vy * dt;
-      }
-      const ratio = speed / MAX;
-      // Fluchtpunkt: wohin die Straße führt, verschoben um die Querbewegung beim Lenken
-      const foeT = clamp(aheadX + steerVis * w * 0.28, w * 0.1, w * 0.9);
-      if (!streaks.length){ foeX = foeT; for (let k = 0; k < 26; k++) streaks.push(newStreak(true)); }
-      foeX += (foeT - foeX) * Math.min(1, dt * 5);
-      // Drehung in der Kurve: alles strömt seitlich, so schnell wie die Skyline
-      yawVx = -segAt(pos + PLAYER_Z).curve * ratio * 0.05 * w * 1.6;
-      const grow = 0.6 + ratio * 3.4;
-      for (let k = 0; k < streaks.length; k++){
-        const s = streaks[k];
-        s.vx = (s.x - foeX) * grow * s.v + yawVx;
-        s.vy = (s.y - HZ) * grow * s.v;
-        s.x += s.vx * dt; s.y += s.vy * dt;
-        if (s.y > h + 20 || s.x < -20 || s.x > w + 20 || s.y < HZ) streaks[k] = newStreak(false);
       }
       shake *= Math.pow(0.02, dt); flash = Math.max(0, flash - dt * 2.5);
       checkFlash = Math.max(0, checkFlash - dt); goT = Math.max(0, goT - dt); hitCool = Math.max(0, hitCool - dt);
@@ -496,7 +473,6 @@ OE.register({
         seg.ax = hw + s1 * (x1 - camX) * hw; seg.ay = HZ - s1 * (seg.p1.y - camY) * hh; seg.aw = s1 * ROAD * hw;
         seg.bx = hw + s2 * (x2 - camX) * hw; seg.by = HZ - s2 * (seg.p2.y - camY) * hh; seg.bw = s2 * ROAD * hw;
         seg.n = n; seg.fr = frame;
-        if (n === 30) aheadX = hw + s1 * x1 * hw;   // Straßenmitte voraus, ohne eigene Querlage = Fahrtrichtung
         const f = Math.pow(n / DRAW, 1.3);
         seg.fog = f; seg.fi = Math.min(FL - 1, (f * FL) | 0);
         // Fahrbahn nur zeichnen, wenn sie über die bisher höchste Kante hinausragt
@@ -756,20 +732,6 @@ OE.register({
       g.fillStyle = "rgba(166,255,184,.55)"; g.fillRect(0, HZ, w, 1);
     }
 
-    function drawStreaks(){
-      const ratio = speed / MAX;
-      if (ratio < 0.55 || state !== "running") return;
-      const maxR = Math.hypot(w / 2, h / 2), k0 = (ratio - 0.55) * 2.2, trail = 0.045 + ratio * 0.035;
-      g.strokeStyle = C.bright; g.lineWidth = 1;
-      for (const s of streaks){
-        // Strich entlang der eigenen Flugbahn: zeigt beim Lenken und in Kurven schräg
-        const r = Math.hypot(s.x - foeX, s.y - HZ) / maxR;
-        g.globalAlpha = Math.min(0.5, k0 * Math.sqrt(r));
-        g.beginPath(); g.moveTo(s.x - s.vx * trail, s.y - s.vy * trail); g.lineTo(s.x, s.y); g.stroke();
-      }
-      g.globalAlpha = 1;
-    }
-
     function drawParts(){
       if (!parts.length) return;
       g.globalCompositeOperation = "lighter";
@@ -863,7 +825,6 @@ OE.register({
         }
         if (seg.sp) for (const sp of seg.sp) drawSprite(sp, seg);
       }
-      drawStreaks();
 
       // eigenes Auto: Neigung beim Lenken, Rütteln auf Randstreifen und Wiese
       const s = carSize(), ratio = speed / MAX, pSeg = segAt(pos + PLAYER_Z);
