@@ -2,8 +2,8 @@
    Lichtwand hinter sich her, wer eine Wand trifft, ist raus. Runde 1 gegen
    einen Gegner, danach zwei, ab Runde 3 drei. Die Gegner schauen voraus
    (wie viel Platz bleibt mir?) und schneiden dir gern den Weg ab.
-   Die Kamera fährt mit und dreht sich mit dem eigenen Rad: es zeigt auf dem
-   Bildschirm immer nach oben, links und rechts stimmen also immer. */
+   Gelenkt wird nur mit links/rechts aus Sicht des Fahrers (wie im Cockpit),
+   das Spielfeld selbst steht still und ist ganz zu sehen. */
 
 OE.register({
   id: "tron",
@@ -23,9 +23,7 @@ OE.register({
       { name: "RINZ", col: "#ffe45a", glow: "rgba(255,228,90," },
     ];
 
-    const ARENA = 80;                       // Spielfeld in Feldern (quadratisch, größer als der Bildschirm)
-    let C = 8, cols = ARENA, rows = ARENA, w = 0, h = 0, bg = null;
-    let ang = 0, angT = 0, camX = 0, camY = 0;   // Kameradrehung (aktuell/Ziel) und -position
+    let C = 8, cols = 60, rows = 40, w = 0, h = 0, bg = null;
     let occ, bikes, state = "ready", round = 1, wins = 0, losses = 0, acc = 0, rate = 18, clock = 0, flash = 0, endT = 0;
     let best = ctx.store.get("tron.best", 0);
     const parts = [];
@@ -33,10 +31,12 @@ OE.register({
     function size(){
       w = body.clientWidth; h = body.clientHeight;
       if (!w || !h) return;
-      C = Math.max(6, Math.min(12, Math.floor(Math.min(w, h) / 40)));   // man sieht etwa 40 Felder ums Rad
+      C = Math.max(5, Math.min(10, Math.floor(Math.min(w, h) / 46)));
+      const nc = Math.floor(w / C), nr = Math.floor(h / C), changed = nc !== cols || nr !== rows;
+      cols = nc; rows = nr;
       const dpr = window.devicePixelRatio || 1;
-      cv.width = w * dpr; cv.height = h * dpr;
-      cv.style.width = w + "px"; cv.style.height = h + "px";
+      cv.width = cols * C * dpr; cv.height = rows * C * dpr;
+      cv.style.width = cols * C + "px"; cv.style.height = rows * C + "px";
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       // Boden: dunkles Raster wie das Spielfeld im Film, einmal vorgezeichnet
       bg = document.createElement("canvas");
@@ -49,7 +49,11 @@ OE.register({
       for (let x = 0; x <= cols * C; x += step){ b.fillStyle = x % (step * 4) ? "rgba(90,232,255,.07)" : "rgba(90,232,255,.16)"; b.fillRect(x, 0, 1, rows * C); }
       for (let y = 0; y <= rows * C; y += step){ b.fillStyle = y % (step * 4) ? "rgba(90,232,255,.07)" : "rgba(90,232,255,.16)"; b.fillRect(0, y, cols * C, 1); }
       b.strokeStyle = "rgba(90,232,255,.55)"; b.lineWidth = 2; b.strokeRect(1, 1, cols * C - 2, rows * C - 2);
-      if (!bikes) newRound();
+      // neue Feldgröße: Runde neu aufsetzen, sonst passt das Raster nicht mehr
+      if (!bikes || changed){
+        newRound();
+        if (state === "running" || state === "count"){ state = "count"; endT = 0; lastCount = 0; }
+      }
     }
 
     const idx = (x, y) => y * cols + x;
@@ -68,8 +72,7 @@ OE.register({
       bikes = BIKES.slice(0, n + 1).map((b, i) => ({ ...b, ...starts[i], alive: true, cpu: i > 0, trail: [], next: starts[i].d,
         wiggle: Math.random() }));
       for (const k of bikes){ k.trail.push([k.x, k.y]); occ[idx(k.x, k.y)] = 1; }
-      parts.length = 0; acc = 0; flash = 0; ang = angT = 0;
-      camX = bikes[0].x * C + C / 2; camY = bikes[0].y * C + C / 2;
+      parts.length = 0; acc = 0; flash = 0;
       rate = 16 + Math.min(8, round);   // Felder pro Sekunde, wird mit jeder Runde etwas schneller
     }
 
@@ -127,11 +130,7 @@ OE.register({
     function tick(){
       for (const k of bikes) if (k.alive && k.cpu) think(k);
       for (const k of bikes) if (k.alive && !k.cpu){
-        if ((k.next + 2) % 4 !== k.d && k.next !== k.d){   // keine Kehrtwende in die eigene Wand
-          // Kamera dreht gegen die Kurve, damit das Rad weiter nach oben zeigt
-          angT += (k.next - k.d + 4) % 4 === 1 ? -Math.PI / 2 : Math.PI / 2;
-          k.d = k.next;
-        }
+        if ((k.next + 2) % 4 !== k.d) k.d = k.next;   // keine Kehrtwende in die eigene Wand
       } else if (k.alive) k.d = k.next;
       // erst alle Ziele bestimmen, dann gleichzeitig ziehen (Frontalcrash = beide raus)
       const moves = bikes.map(k => k.alive ? [k.x + DIRS[k.d][0], k.y + DIRS[k.d][1]] : null);
@@ -186,13 +185,6 @@ OE.register({
 
     function draw(dt){
       const W = cols * C, H = rows * C;
-      g.fillStyle = "#000"; g.fillRect(0, 0, w, h);
-      // Kamera folgt dem eigenen Rad (etwas unterhalb der Mitte, damit man nach vorn mehr sieht)
-      const me = bikes[0];
-      if (me.alive){ const [hx, hy] = head(me); camX = hx; camY = hy; }
-      ang += (angT - ang) * Math.min(1, dt * 9);
-      g.save();
-      g.translate(w / 2, h * 0.64); g.rotate(ang); g.translate(-camX, -camY);
       if (bg) g.drawImage(bg, 0, 0, W, H);
       g.lineCap = "round"; g.lineJoin = "round";
       for (const k of bikes){
@@ -214,6 +206,14 @@ OE.register({
         g.fillStyle = k.col; g.fillRect(-C * 1.3, -C * 0.55, C * 1.9, C * 1.1);
         g.fillStyle = "#fff"; g.fillRect(C * 0.2, -C * 0.3, C * 0.45, C * 0.6);
         g.restore();
+        if (!k.cpu && state !== "over"){
+          // L/R neben dem eigenen Rad: zeigt, wohin die beiden Tasten gerade führen
+          const fs = Math.max(9, C * 1.5), off = C * 2.6, [lx, ly] = DIRS[(k.d + 3) % 4], [rx, ry] = DIRS[(k.d + 1) % 4];
+          g.font = `600 ${fs}px "IBM Plex Mono", monospace`; g.textAlign = "center"; g.textBaseline = "middle";
+          g.globalAlpha = 0.7; g.fillStyle = k.col;
+          g.fillText("L", x + lx * off, y + ly * off); g.fillText("R", x + rx * off, y + ry * off);
+          g.globalAlpha = 1;
+        }
       }
       // Trümmer
       g.globalCompositeOperation = "lighter";
@@ -225,33 +225,11 @@ OE.register({
         g.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
       }
       g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
-      g.restore();
-      if (flash > 0){ g.fillStyle = `rgba(255,255,255,${flash * 0.5})`; g.fillRect(0, 0, w, h); flash = Math.max(0, flash - dt * 2.5); }
-      minimap();
+      if (flash > 0){ g.fillStyle = `rgba(255,255,255,${flash * 0.5})`; g.fillRect(0, 0, W, H); flash = Math.max(0, flash - dt * 2.5); }
 
       const alive = bikes.slice(1).filter(k => k.alive).length;
       bar.innerHTML = `<span>runde <b>${round}</b></span><span>siege <b>${wins}</b></span><span>rekord <b>${best}</b></span>
         <span>gegner <b>${alive}</b>/${bikes.length - 1}</span><span class="right">P = pause</span>`;
-    }
-
-    // Übersichtskarte oben rechts, dreht mit wie ein Navi
-    function minimap(){
-      const S = Math.max(70, Math.min(120, Math.min(w, h) * 0.24)), m = 8, cx = w - m - S / 2, cy = m + S / 2, k = S / (ARENA * 1.42);
-      g.save();
-      g.beginPath(); g.arc(cx, cy, S / 2, 0, Math.PI * 2);
-      g.fillStyle = "rgba(0,8,12,.78)"; g.fill();
-      g.strokeStyle = "rgba(90,232,255,.45)"; g.lineWidth = 1; g.stroke();
-      g.clip();
-      g.translate(cx, cy); g.rotate(ang); g.scale(k, k); g.translate(-ARENA / 2, -ARENA / 2);
-      g.strokeStyle = "rgba(90,232,255,.5)"; g.lineWidth = 1 / k; g.strokeRect(0, 0, ARENA, ARENA);
-      g.lineCap = "round"; g.lineJoin = "round";
-      for (const b of bikes){
-        g.beginPath();
-        b.trail.forEach(([x, y], i) => i ? g.lineTo(x + 0.5, y + 0.5) : g.moveTo(x + 0.5, y + 0.5));
-        g.strokeStyle = b.col; g.globalAlpha = b.alive ? 0.9 : 0.35; g.lineWidth = 1.6 / k; g.stroke();
-        if (b.alive){ g.fillStyle = b === bikes[0] ? "#fff" : b.col; g.fillRect(b.x - 0.5 / k * 2, b.y - 0.5 / k * 2, 2 / k, 2 / k); }
-      }
-      g.restore();
     }
 
     function overlay(html){ ov.hidden = !html; if (html) ov.innerHTML = html; }
@@ -275,7 +253,7 @@ OE.register({
     }
 
     // Handy: linke Bildhälfte = links, rechte = rechts; wischen nach links/rechts geht auch.
-    // Weil die Kamera mitdreht, stimmt das in jeder Fahrtrichtung.
+    // Links/rechts gilt aus Sicht des Fahrers, auch wenn das Rad gerade nach unten fährt.
     let sx = 0, down = false;
     cv.addEventListener("pointerdown", e => {
       down = true; sx = e.clientX; cv.setPointerCapture(e.pointerId);
@@ -303,7 +281,7 @@ OE.register({
       if (state === "count"){
         const n = 3 - Math.floor(endT / 0.6);
         g.font = `600 ${Math.max(28, C * 7)}px "IBM Plex Mono", monospace`; g.textAlign = "center"; g.textBaseline = "middle";
-        g.fillStyle = "#5ae8ff"; g.fillText(n > 0 ? n : "LOS", w / 2, h * 0.4);
+        g.fillStyle = "#5ae8ff"; g.fillText(n > 0 ? n : "LOS", cols * C / 2, rows * C / 2);
       }
     });
 
@@ -314,7 +292,7 @@ OE.register({
     ]);
     size();
     overlay(`<div class="big" style="color:#5ae8ff;letter-spacing:.5em">T R O N</div><div>Lichtrad-Duell · nicht in die Wände fahren</div>
-      <div class="dim">${ctx.touch ? "linke/rechte Bildhälfte oder ◀ ▶ = abbiegen · das Feld dreht sich mit, dein Rad fährt immer nach oben" : "← → = links/rechts abbiegen · das Feld dreht sich mit"}</div>
+      <div class="dim">${ctx.touch ? "linke/rechte Bildhälfte oder ◀ ▶ = abbiegen · immer aus Sicht des Fahrers" : "← → = links/rechts abbiegen · immer aus Sicht des Fahrers"}</div>
       <div>${ctx.touch ? "tippen zum Start" : "ENTER = start"}</div>`);
 
     return {
