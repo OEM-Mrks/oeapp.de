@@ -37,6 +37,12 @@ const store = {
 };
 
 let enabled = store.get(), appId = null;
+// Töne im Terminal (Piepsen, Festplatte, Tippgeräusch) – eigener Schalter, Standard aus
+const sfxStore = {
+  get(){ try{ return localStorage.getItem("oe.sfx") === "1"; } catch(e){ return false; } },
+  set(v){ try{ localStorage.setItem("oe.sfx", v ? "1" : "0"); } catch(e){} },
+};
+let sfx = sfxStore.get();
 let ac = null, master = null, rev = null, dly = null, noise = null;
 let track = null, timer = null, nextT = 0, step = 0, lead = null;
 
@@ -52,7 +58,7 @@ const seeded = seed => () => {
 /* iOS: WebAudio verstummt sonst beim Lautlos-Schalter; "playback" spielt trotzdem,
    aber nur solange die Musik eingeschaltet ist */
 function session(){
-  try{ if (navigator.audioSession) navigator.audioSession.type = enabled ? "playback" : "auto"; } catch(e){}
+  try{ if (navigator.audioSession) navigator.audioSession.type = enabled || sfx ? "playback" : "auto"; } catch(e){}
 }
 const asleep = () => ac.state !== "running" && ac.state !== "closed";   // auch iOS-"interrupted"
 
@@ -253,28 +259,88 @@ function stop(){
   clearInterval(timer); timer = null; track = null;
 }
 
-/* ---------- Schalter in der Fußleiste ---------- */
+/* ---------- Terminal-Geräusche ----------
+   Nur im Terminal (keine App offen) und nur mit "töne an": alle 3–7 s
+   entweder ein leises Piepsen oder eine alte Festplatte, die sucht
+   (kurze gefilterte Rauschklicks, mal einzeln, mal als Rattern). */
+let sfxTimer = null;
+function tick(t, freq, vol){
+  const n = ac.createBufferSource(), bp = ac.createBiquadFilter(), g = ac.createGain();
+  n.buffer = noise; bp.type = "bandpass"; bp.frequency.value = freq; bp.Q.value = 2.5;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.012);
+  n.connect(bp); bp.connect(g); g.connect(ac.destination);
+  n.start(t, Math.random() * 0.5, 0.02);
+}
+function hdd(){
+  let t = ac.currentTime + 0.02;
+  const f = 2200 + Math.random() * 1800;
+  if (Math.random() < 0.35){
+    // Rattern: viele schnelle Klicks
+    const n = 12 + (Math.random() * 20 | 0);
+    for (let i = 0; i < n; i++){ tick(t, f + Math.random() * 600, 0.05 + Math.random() * 0.04); t += 0.006 + Math.random() * 0.01; }
+  } else {
+    // Suchen: wenige Klicks mit Pausen
+    const n = 3 + (Math.random() * 8 | 0);
+    for (let i = 0; i < n; i++){ tick(t, f + Math.random() * 900, 0.06 + Math.random() * 0.05); t += 0.02 + Math.random() * 0.07; }
+  }
+}
+function chirp(){
+  const t = ac.currentTime + 0.02;
+  const n = Math.random() < 0.3 ? 2 : 1, f = 1700 + Math.random() * 900;
+  for (let i = 0; i < n; i++){
+    const o = ac.createOscillator(), g = ac.createGain(), s0 = t + i * 0.09;
+    o.type = "sine"; o.frequency.value = f * (i ? 1.25 : 1);
+    g.gain.setValueAtTime(0, s0); g.gain.linearRampToValueAtTime(0.018, s0 + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.06);
+    o.connect(g); g.connect(ac.destination); o.start(s0); o.stop(s0 + 0.08);
+  }
+}
+function ambient(){
+  clearTimeout(sfxTimer);
+  if (!sfx) return;
+  sfxTimer = setTimeout(() => {
+    if (sfx && !appId && !document.hidden && init() && ac.state === "running") (Math.random() < 0.6 ? hdd : chirp)();
+    ambient();
+  }, 3000 + Math.random() * 4000);
+}
+
+/* ---------- Schalter in der Fußleiste ----------
+   Im Terminal und im Menü schaltet er die Töne, in Spielen mit Track die Musik. */
 const seg = document.createElement("div");
 seg.className = "seg music-seg";
 seg.setAttribute("role", "button");
-seg.title = "Synthwave-Musik in den Spielen ein/aus";
-function label(){ seg.innerHTML = `<span>♪ musik&nbsp;<b>${enabled ? "an" : "aus"}</b></span>`; seg.classList.toggle("on", enabled); }
+const inGame = () => !!(appId && TRACKS[appId]);
+function label(){
+  const on = inGame() ? enabled : sfx;
+  seg.innerHTML = `<span>♪ ${inGame() ? "musik" : "töne"}&nbsp;<b>${on ? "an" : "aus"}</b></span>`;
+  seg.classList.toggle("on", on);
+  seg.title = inGame() ? "Synthwave-Musik in den Spielen ein/aus" : "Terminal-Geräusche ein/aus";
+}
 seg.addEventListener("click", () => {
-  enabled = !enabled; store.set(enabled); label();
-  session();
-  if (enabled){ init(); if (asleep()) ac.resume().catch(() => {}); if (appId) play(appId); }
-  else stop();
+  if (inGame()){
+    enabled = !enabled; store.set(enabled);
+    session();
+    if (enabled){ init(); if (asleep()) ac.resume().catch(() => {}); play(appId); }
+    else stop();
+  } else {
+    sfx = !sfx; sfxStore.set(sfx);
+    session();
+    if (sfx){ init(); if (asleep()) ac.resume().catch(() => {}); chirp(); }
+    ambient();
+  }
+  label();
 });
 const spacer = document.querySelector(".botbar .spacer");
 if (spacer) spacer.parentNode.insertBefore(seg, spacer);
 label();
 
-addEventListener("oe:app", e => { appId = e.detail; if (appId && TRACKS[appId]) play(appId); else stop(); });
+addEventListener("oe:app", e => { appId = e.detail; label(); if (appId && TRACKS[appId]) play(appId); else stop(); });
+ambient();
 document.addEventListener("visibilitychange", () => {
   if (!ac) return;
   if (document.hidden){ ac.suspend().catch(() => {}); }
   else if (timer && asleep()){ ac.resume().then(() => { nextT = Math.max(nextT, ac.currentTime + 0.05); }).catch(() => {}); }
 });
 
-window.OE_MUSIC = { tracks: TRACKS, play, stop };
+window.OE_MUSIC = { tracks: TRACKS, play, stop, sfx: () => sfx };
 })();

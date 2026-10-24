@@ -336,6 +336,18 @@ pre.ascii{
   padding:0;
 }
 .cli-input::placeholder{ color:var(--green-dim); opacity:.7; }
+/* eigener Block-Cursor, damit man sieht, wo man tippen kann (der echte Caret ist unsichtbar) */
+.cli-field{ position:relative; flex:1; min-width:0; display:flex; align-items:center; }
+.cli-field .cli-input{ caret-color:transparent; }
+.cli-field.empty .cli-input{ text-indent:1.4ch; }   /* Platzhalter rückt hinter den Cursor */
+.cli-cur{ position:absolute; left:0; top:0; bottom:0; display:flex; align-items:center; pointer-events:none; white-space:pre; overflow:hidden; max-width:100%; }
+.cli-mirror{ visibility:hidden; }
+.cli-cur i{
+  display:inline-block; width:.62em; height:1.2em; background:var(--green-bright);
+  box-shadow:0 0 8px rgba(51,255,102,.7); animation:cli-blink 1.2s infinite;
+}
+.cli-field.busy .cli-cur i{ animation:none; }   /* beim Tippen steht er still */
+@keyframes cli-blink{ 0%, 55%{ opacity:1; } 60%, 100%{ opacity:0; } }
 
 #app{ display:none; flex:1; min-height:0; position:relative; }
 body.app-on #log, body.app-on #prompt{ display:none; }
@@ -521,7 +533,7 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 }
 .touch input, .touch textarea{ -webkit-user-select:text; user-select:text; }
 /* unter 16px zoomt iOS beim Antippen eines Eingabefelds hinein */
-.touch .cli-input, .touch .dos-in{ font-size:16px; }
+.touch .cli-input, .touch .cli-cur, .touch .dos-in{ font-size:16px; }
 
 /* Layout folgt dem sichtbaren Bereich (Bildschirmtastatur), Werte setzt core.js */
 .vv .topbar{ top:var(--vvt, 0px); }

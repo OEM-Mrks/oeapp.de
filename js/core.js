@@ -667,6 +667,19 @@ function completions(prefix){
 
 function initCli(){
   const cli = $("#cli");
+  // Block-Cursor folgt der Einfügemarke: unsichtbarer Spiegeltext davor schiebt ihn an die Stelle
+  const field = cli.parentNode, mirror = field.querySelector(".cli-mirror"), cur = field.querySelector(".cli-cur");
+  let busyT = 0;
+  const sync = () => {
+    const pos = cli.selectionStart == null ? cli.value.length : cli.selectionStart;
+    mirror.textContent = cli.value.slice(0, pos);
+    cur.style.transform = `translateX(${-cli.scrollLeft}px)`;
+    field.classList.toggle("empty", !cli.value);
+  };
+  const typed = () => { sync(); field.classList.add("busy"); clearTimeout(busyT); busyT = setTimeout(() => field.classList.remove("busy"), 600); };
+  for (const ev of ["input", "keyup", "click", "select", "focus"]) cli.addEventListener(ev, ev === "input" ? typed : sync);
+  cli.addEventListener("keydown", () => requestAnimationFrame(sync));
+  sync();
   cli.addEventListener("keydown", e => {
     // stopPropagation: sonst bekäme eine gerade gestartete App dasselbe Enter
     if (e.key === "Enter"){ e.preventDefault(); e.stopPropagation(); const v = cli.value; cli.value = ""; runCommand(v); }
@@ -837,7 +850,7 @@ async function say(html, speed = 42){
   for (const [node, full] of texts) for (const ch of full){
     node.textContent += ch;
     log.scrollTop = log.scrollHeight;
-    if (ch !== " ") beep(1500 + rint(0, 300), 6, "square", 0.006);
+    if (ch !== " " && window.OE_MUSIC && OE_MUSIC.sfx()) beep(1500 + rint(0, 300), 6, "square", 0.006);
     await sleep(speed * (0.6 + Math.random() * 0.8));
   }
 }
