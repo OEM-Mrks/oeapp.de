@@ -19,7 +19,7 @@ live erzeugt, je Spiel ein eigener Track).
 | `pong`     | Tischtennis, Stufen 1 2 3, leicht bis 3 gegen müden Computer (`pong --2p` zu zweit) |
 | `chomp`    | Labyrinth mit vier Geistern (Pac-Man-artig), Stufen 1 2 3, leicht: halbes Feld = gewonnen |
 | `fixit`    | Fenster flicken (Hommage an Fix-It Felix Jr.), Stufen (L), leicht ohne Hindernisse, 120 s, 5 Leben |
-| `tron`     | Lichtrad-Duell (Tron, 1982), Stufen (S), leicht: nach 3 Siegen gewonnen |
+| `tron`     | Lichtrad-Duell (Tron, 1982), Stufen (S), leicht: 5 Extraleben, kluge Gegner mit einem Leben, nach 3 Siegen gewonnen |
 | `race`     | Pseudo-3D-Rennen: 2 Runden ins Ziel, Stage 2 bei Nacht, Stufen (L), leicht: viel Zeit, wenig Verkehr |
 | `ttt`      | Tic-Tac-Toe, leicht/normal/schwer (unschlagbar) oder `--2p`, S wechselt |
 | `ssp`      | Schnick, Schnack, Schnuck gegen lernende KI, Stufen (L), leicht mit Vorsprung |

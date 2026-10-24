@@ -6,8 +6,10 @@
    links, rechte = nach rechts. Fährt das Rad nach unten, tauschen die beiden
    still ihre Funktion, damit die linke Fläche auch dann zum linken Bildrand führt.
    Drei Stufen (leicht / normal / schwer): ändern Tempo und wie weit die Gegner
-   vorausdenken. Auf leicht fahren sie langsam und unvorsichtig, nach drei
-   gewonnenen Runden ist das Raster befreit. Wahl auf dem Startbildschirm mit
+   vorausdenken. Auf leicht ist das Tempo gemütlich und du hast 5 Extraleben:
+   ein Crash löst dein Rad samt Lichtwand auf und setzt es an einer freien
+   Stelle neu zusammen. Die Gegner fahren dabei klug, haben aber nur ein Leben.
+   Nach drei gewonnenen Runden ist das Raster befreit. Wahl auf dem Startbildschirm mit
    1/2/3, S oder ↑↓, per Tippen auf die Stufe oder mit tron --leicht / --schwer
    (alt: --langsam / --schnell). Rekord je Stufe getrennt. */
 
@@ -32,9 +34,9 @@ OE.register({
 
     // tempo: Faktor aufs Grundtempo; look/noise/aim: wie gründlich die Gegner planen;
     // oops: Chance je Schritt, dass ein Gegner blind abbiegt; doze: nach so vielen Sekunden
-    // döst er ein und fährt stur geradeaus; goal: Siege bis zum Gesamtsieg
+    // döst er ein und fährt stur geradeaus; goal: Siege bis zum Gesamtsieg; lives: Extraleben
     const LEVELS = [
-      { id: "leicht", tempo: 0.55, look: 12,  noise: 14, aim: 0,    oops: 0.02, doze: [3, 9], goal: 3 },
+      { id: "leicht", tempo: 0.55, look: 400, noise: 8,  aim: 0.7,  oops: 0, goal: 3, lives: 5 },
       { id: "normal", tempo: 1,    look: 400, noise: 8,  aim: 1,    oops: 0 },
       { id: "schwer", tempo: 1.35, look: 600, noise: 6,  aim: 1.15, oops: 0 },
     ];
@@ -48,6 +50,7 @@ OE.register({
     const bestKey = () => "tron.best" + [".leicht", "", ".schnell"][lv];
 
     let C = 8, cols = 60, rows = 40, w = 0, h = 0, bg = null;
+    let lives = 0, rez = null;   // Extraleben (leicht) und laufende Wiederbelebung
     let occ, bikes, state = "ready", round = 1, wins = 0, losses = 0, acc = 0, rate = 18, clock = 0, flash = 0, endT = 0;
     let best = ctx.store.get(bestKey(), 0);
     if (ctx.demo) round = 3;   // Vorführung: gleich gegen drei Gegner
@@ -78,7 +81,7 @@ OE.register({
       // neue Feldgröße: Runde neu aufsetzen, sonst passt das Raster nicht mehr
       if (!bikes || changed){
         newRound();
-        if (state === "running" || state === "count"){ state = "count"; endT = 0; lastCount = 0; }
+        if (["running", "count", "respawn"].includes(state)){ state = "count"; endT = 0; lastCount = 0; rez = null; }
       }
     }
 
@@ -97,7 +100,7 @@ OE.register({
       ];
       bikes = BIKES.slice(0, n + 1).map((b, i) => ({ ...b, ...starts[i], alive: true, cpu: i > 0, trail: [], next: starts[i].d,
         wiggle: Math.random(), doze: L().doze ? L().doze[0] + Math.random() * (L().doze[1] - L().doze[0]) : Infinity }));
-      for (const k of bikes){ k.trail.push([k.x, k.y]); occ[idx(k.x, k.y)] = 1; }
+      bikes.forEach((k, i) => { k.trail.push([k.x, k.y]); occ[idx(k.x, k.y)] = i + 1; });   // Feld merkt sich, wessen Wand es ist
       parts.length = 0; acc = 0; flash = 0; play = 0;
       rate = (16 + Math.min(8, round)) * L().tempo;   // Felder pro Sekunde, wird mit jeder Runde etwas schneller
     }
@@ -209,12 +212,17 @@ OE.register({
         else k.trail.push([nx, ny]);
         k.x = nx; k.y = ny;
       });
-      for (const k of bikes) if (k.alive) occ[idx(k.x, k.y)] = 1;
+      bikes.forEach((k, i) => { if (k.alive) occ[idx(k.x, k.y)] = i + 1; });
       checkEnd();
     }
 
     function checkEnd(){
       const me = bikes[0], rivals = bikes.slice(1).filter(k => k.alive).length;
+      if (!me.alive && lives > 0 && !ctx.demo){   // leicht: ein Leben weg statt Spielende
+        lives--;
+        if (rivals){ respawn(); return; }
+        me.alive = true;   // letzter Gegner im selben Moment raus: zählt als Sieg
+      }
       if (me.alive && rivals) return;
       if (ctx.demo){ newRound(); return; }   // Vorführung: gleich die nächste Runde, ohne Bildschirm
       state = "end"; endT = 0;
@@ -236,15 +244,81 @@ OE.register({
       screen();
     }
 
+    /* ---------- Extraleben: Rad auflösen, Wand weg, an freier Stelle neu bauen ---------- */
+    const DISSOLVE = 0.7, BUILD = 0.9;
+    function respawn(){
+      state = "respawn";
+      rez = { t: 0, x: 0, y: 0, built: false };
+      ctx.beep(220, 160, "sawtooth", 0.05); ctx.after(180, () => ctx.beep(147, 260, "sawtooth", 0.05));
+      ctx.log("WARN", `tron: Lichtrad zerstört, noch ${lives} Leben`);
+    }
+    // sicherste Stelle: viel erreichbarer Platz, lange Gerade, weit weg von den Gegnern
+    function spawnSpot(){
+      const rivals = bikes.filter(b => b.cpu && b.alive);
+      let best = null, bestScore = -Infinity;
+      for (let y = 3; y < rows - 3; y += 3) for (let x = 3; x < cols - 3; x += 3){
+        if (!free(x, y)) continue;
+        const near = Math.min(...rivals.map(r => Math.hypot(r.x - x, r.y - y)));
+        if (near < 8) continue;
+        for (let d = 0; d < 4; d++){
+          let run = 0; while (run < 30 && free(x + DIRS[d][0] * (run + 1), y + DIRS[d][1] * (run + 1))) run++;
+          if (run < 4) continue;
+          const s = run * 6 + Math.min(near, 25) * 3 + Math.random() * 4;
+          if (s > bestScore){ bestScore = s; best = { x, y, d }; }
+        }
+      }
+      return best || { x: bikes[0].x, y: bikes[0].y, d: bikes[0].d };
+    }
+    function rezTick(dt){
+      rez.t += dt;
+      const me = bikes[0];
+      if (!rez.built && rez.t >= DISSOLVE){
+        // eigene Lichtwand ist weg: Felder freigeben, neuen Platz suchen
+        for (let i = 0; i < occ.length; i++) if (occ[i] === 1) occ[i] = 0;
+        const s = spawnSpot();
+        Object.assign(me, { x: s.x, y: s.y, d: s.d, next: s.d, trail: [[s.x, s.y]], alive: true });
+        occ[idx(s.x, s.y)] = 1;
+        rez.x = s.x * C + C / 2; rez.y = s.y * C + C / 2; rez.built = true;
+        [523, 659, 784, 1047].forEach((f, i) => ctx.after(i * 120, () => ctx.beep(f, 110, "square", 0.035)));
+      }
+      if (rez.t >= DISSOLVE + BUILD){ rez = null; state = "running"; acc = 0; }
+    }
+    function drawRez(){
+      const W = cols * C, H = rows * C;
+      g.font = `600 ${Math.max(18, C * 3.2)}px "IBM Plex Mono", monospace`; g.textAlign = "center"; g.textBaseline = "middle";
+      if (!rez.built){
+        // Störung: verschobene Bildstreifen, Text flackert
+        const f = rez.t / DISSOLVE;
+        for (let i = 0; i < 6; i++){
+          const y = Math.random() * H, hh = 2 + Math.random() * C * 2;
+          g.drawImage(cv, 0, y * (cv.height / H), cv.width, hh * (cv.height / H), (Math.random() - 0.5) * C * 3 * (1 - f), y, W, hh);
+        }
+        if (Math.random() < 0.8){ g.fillStyle = "#ff9a3c"; g.fillText("DEREZZED", W / 2, H / 2); }
+        return;
+      }
+      // Wiederaufbau: Ringe ziehen sich zum neuen Rad zusammen, Fadenkreuz
+      const f = Math.min(1, (rez.t - DISSOLVE) / BUILD), me = bikes[0];
+      for (let i = 0; i < 3; i++){
+        const q = Math.max(0, 1 - f - i * 0.15);
+        g.strokeStyle = me.glow + (0.8 * (1 - q)) + ")"; g.lineWidth = 2;
+        g.beginPath(); g.arc(rez.x, rez.y, C * 1.5 + q * Math.max(W, H) * 0.5, 0, Math.PI * 2); g.stroke();
+      }
+      g.strokeStyle = me.glow + "0.5)"; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(rez.x, 0); g.lineTo(rez.x, H); g.moveTo(0, rez.y); g.lineTo(W, rez.y); g.stroke();
+      g.fillStyle = "#5ae8ff";
+      g.fillText(`REZZ · noch ${"♥".repeat(lives) || "0"}`, W / 2, rez.y > H / 2 ? H * 0.25 : H * 0.75);
+    }
+    const hearts = () => L().lives ? `<span>leben <b style="color:#ff4f6a">${"♥".repeat(lives)}</b><span class="dim">${"♡".repeat(L().lives - lives)}</span></span>` : "";
+
     /* ---------- Bildschirme zwischen den Runden, mit Stufenwahl ---------- */
     function screen(){
       const go = ctx.touch ? "tippen" : "ENTER";
       const pick = `<button type="button" class="tron-lv" style="font:inherit;color:#5ae8ff;background:rgba(90,232,255,.08);border:1px solid rgba(90,232,255,.5);padding:6px 14px;margin:4px 0;cursor:pointer;touch-action:manipulation">stufe ‹ <b>${L().id}</b> ›</button>`
         + `<div class="dim">${ctx.touch ? "stufe antippen = wechseln" : "1 2 3 / ↑↓ = stufe"}</div>`;
       if (state === "ready") overlay(`<div class="big" style="color:#5ae8ff;letter-spacing:.5em">T R O N</div><div>Lichtrad-Duell · nicht in die Wände fahren</div>
-        <div class="dim">${ctx.touch ? "linke/rechte Fläche = abbiegen" : "← → = abbiegen"}</div>${pick}
+        <div class="dim">${ctx.touch ? "linke/rechte Fläche = abbiegen" : "← → = abbiegen"}</div>${L().lives ? `<div>du hast <b style="color:#ff4f6a">${L().lives} Extraleben</b> · die Gegner nur eins</div>` : ""}${pick}
         <div>${ctx.touch ? "tippen zum Start" : "ENTER = start"}</div>`);
-      else if (state === "end") overlay(`<div class="big" style="color:#5ae8ff">RUNDE GEWONNEN</div><div>Siege ${wins} · weiter mit ${Math.min(3, round)} Gegner${Math.min(3, round) > 1 ? "n" : ""}</div>
+      else if (state === "end") overlay(`<div class="big" style="color:#5ae8ff">RUNDE GEWONNEN</div><div>Siege ${wins} · weiter mit ${Math.min(3, round)} Gegner${Math.min(3, round) > 1 ? "n" : ""}${L().lives ? ` · ${lives} Leben übrig` : ""}</div>
         ${pick}<div class="dim">${go} = nächste Runde · stufe wechseln = neue Serie</div>`);
       else if (state === "champ") overlay(`<div class="big" style="color:#5ae8ff">RASTER BEFREIT!</div><div>${wins} Runden gewonnen · alle Gegner derezzed</div>
         <div class="dim">bereit für mehr? stufe <b>normal</b> wartet</div>${pick}<div class="dim">${go} = neue Serie · ESC = exit</div>`);
@@ -264,6 +338,7 @@ OE.register({
       lv = n; lvs.set(L().id);
       best = ctx.store.get(bestKey(), 0);
       if (state !== "ready"){ state = "ready"; round = 1; wins = 0; }
+      lives = L().lives || 0;
       newRound();   // setzt auch das Tempo neu
       ctx.beep(520 + lv * 180, 60, "square", 0.03);
       screen(); draw(0);
@@ -289,7 +364,11 @@ OE.register({
       if (bg) g.drawImage(bg, 0, 0, W, H);
       g.lineCap = "round"; g.lineJoin = "round";
       for (const k of bikes){
-        const a = k.alive ? 1 : 0.35;
+        let a = k.alive ? 1 : 0.35;
+        if (rez && !rez.built && !k.cpu){   // eigene Wand löst sich flackernd auf
+          a = (1 - rez.t / DISSOLVE) * (Math.random() < 0.3 ? 0.2 : 1);
+          if (a <= 0.02) continue;
+        }
         trailPath(k);
         g.strokeStyle = k.glow + (0.12 * a) + ")"; g.lineWidth = C * 1.6; g.stroke();
         g.strokeStyle = k.glow + (0.35 * a) + ")"; g.lineWidth = C * 0.75; g.stroke();
@@ -318,10 +397,11 @@ OE.register({
         g.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
       }
       g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
+      if (rez) drawRez();
       if (flash > 0){ g.fillStyle = `rgba(255,255,255,${flash * 0.5})`; g.fillRect(0, 0, W, H); flash = Math.max(0, flash - dt * 2.5); }
 
       const alive = bikes.slice(1).filter(k => k.alive).length;
-      const html = `<span>runde <b>${round}</b></span><span>siege <b>${wins}</b></span><span>rekord <b>${best}</b></span><span class="tron-bar-lv" style="cursor:pointer">stufe <b>${L().id}</b></span>${L().goal ? `<span>ziel <b>${L().goal}</b> siege</span>` : ""}
+      const html = `<span>runde <b>${round}</b></span><span>siege <b>${wins}</b></span><span>rekord <b>${best}</b></span><span class="tron-bar-lv" style="cursor:pointer">stufe <b>${L().id}</b></span>${L().goal ? `<span>ziel <b>${L().goal}</b> siege</span>` : ""}${hearts()}
         <span>gegner <b>${alive}</b>/${bikes.length - 1}</span><span class="right">P = pause</span>`;
       if (html !== barHtml){ barHtml = html; bar.innerHTML = html; }   // nur bei Änderung, sonst trifft das Antippen ins Leere
     }
@@ -343,7 +423,8 @@ OE.register({
     let lastCount = 0;
     function begin(){
       if (state === "running" || state === "count") return;
-      if (state === "over" || state === "champ"){ round = 1; wins = 0; newRound(); }
+      if (state === "respawn") return;
+      if (state === "over" || state === "champ"){ round = 1; wins = 0; lives = L().lives || 0; newRound(); }
       else if (state === "end") newRound();
       else if (state === "paused"){ state = "running"; overlay(null); return; }
       state = "count"; endT = 0; lastCount = 0; overlay(null);
@@ -369,6 +450,7 @@ OE.register({
         if (n !== lastCount){ lastCount = n; if (n > 0) ctx.beep(440, 90, "square", 0.04); }
         if (endT >= 1.8){ state = "running"; acc = 0; ctx.beep(880, 220, "square", 0.05); }
       }
+      if (state === "respawn") rezTick(dt);
       if (state === "running"){
         acc += Math.min(ms, 100) / 1000; play += dt;   // Spielzeit: erst ab <10 fps gekappt, sonst unabhängig von der Bildrate
         while (acc >= 1 / rate && state === "running"){ acc -= 1 / rate; tick(); }
@@ -386,6 +468,7 @@ OE.register({
     ctx.buttons(pad, [
       { label: "", key: "ArrowLeft", aria: "linke Taste" }, { label: "", key: "ArrowRight", aria: "rechte Taste" },
     ]);
+    lives = ctx.demo ? 0 : L().lives || 0;
     size();
     if (ctx.demo){ state = "running"; acc = 0; } else screen();
     // Stufe in der Statuszeile antippen/klicken = wechseln (zwischen den Runden)
@@ -393,7 +476,7 @@ OE.register({
 
     // nur zum Testen: tron --debug
     if (ctx.args.includes("--debug")) window.OE_TRON = {
-      get s(){ return { state, round, wins, lv: L().id, cols, rows, bikes: bikes.map(k => ({ x: k.x, y: k.y, d: k.d, alive: k.alive })) }; },
+      get s(){ return { state, round, wins, lives, lv: L().id, cols, rows, bikes: bikes.map(k => ({ x: k.x, y: k.y, d: k.d, alive: k.alive })) }; },
       free: (x, y) => free(x, y),
     };
 
