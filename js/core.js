@@ -606,6 +606,9 @@ function setActiveSeg(id){
     const go = s.dataset.go;
     s.classList.toggle("active", go === id || (go === "apps" && id === "apps"));
   });
+  // auf dem Handy zeigt die Menü-Taste, dass sie das Menü auch wieder schließt
+  const ap = TOUCH && $('.botbar .seg[data-go="apps"]');
+  if (ap) ap.textContent = id === "apps" ? "✕ apps" : "☰ apps";
 }
 
 /* ============================================================
@@ -795,6 +798,8 @@ function initKeys(){
 
 function go(target){
   if (target === "log" || target === "exit"){ if (current) exitApp(); return; }
+  // dieselbe Taste nochmal (z. B. ☰ apps im Menü) = zurück zum Terminal
+  if (current && !current.demo && current.app.id === target){ exitApp(); return; }
   runApp(target);
 }
 
