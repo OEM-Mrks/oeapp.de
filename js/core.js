@@ -534,6 +534,21 @@ function makeCtx(app, args, demo = false){
       return t;
     },
     demo,                   // Vorführung: die App spielt selbst, ohne Ton und ohne Rekorde
+    /* Schwierigkeit für alle Spiele: Standard ist die leichteste Stufe (schnelles Erfolgserlebnis).
+       Reihenfolge: Argument (--leicht/--normal/--schwer, auch --easy/--hard), sonst gemerkte Wahl. */
+    levels(names = ["leicht", "normal", "schwer"]){
+      const key = app.id + ".level";
+      const ALIAS = { easy: "leicht", medium: "normal", mittel: "normal", hard: "schwer" };
+      const pick = v => names.includes(v) ? v : names.includes(ALIAS[v]) ? ALIAS[v] : null;
+      let lv = args.map(a => pick(a.replace(/^-+/, "").toLowerCase())).find(Boolean) || pick(store.get(key, "")) || names[0];
+      return {
+        names,
+        get value(){ return lv; },
+        get index(){ return names.indexOf(lv); },
+        set(v){ v = pick(v); if (v){ lv = v; ctx.store.set(key, v); } return lv; },
+        next(){ return this.set(names[(names.indexOf(lv) + 1) % names.length]); },
+      };
+    },
     _cleanup(){ ctx.alive = false; timers.forEach(f => f()); rafs.forEach(id => cancelAnimationFrame(id)); },
   };
   return ctx;
