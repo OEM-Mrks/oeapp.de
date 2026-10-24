@@ -18,6 +18,7 @@ live erzeugt, je Spiel ein eigener Track).
 | `chomp`    | Labyrinth mit vier Geistern (Pac-Man-artig, eigener Code)   |
 | `tron`     | Lichtrad-Duell gegen 1–3 Computergegner (Tron, 1982)        |
 | `race`     | Pseudo-3D-Autorennen mit Checkpoints, Hupe (H), Polizei (C) |
+| `ttt`      | Tic-Tac-Toe gegen den Computer (3 Stufen) oder `--2p`       |
 | `video`    | Videothek-Kasse von 1994 im DOS-Look: Verleih, Rückgabe, Bon   |
 | `swan`     | 108-Minuten-Countdown aus „Lost“ (`swan --fast` ab 4:00)    |
 | `atm`      | PIN-Programm knackt den Geldautomaten (T2-Hommage)          |

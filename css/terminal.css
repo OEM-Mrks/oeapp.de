@@ -404,6 +404,88 @@ body.app-on #app{ display:flex; flex-direction:column; }
 @keyframes atm-inv{ 50%{ background:var(--green-bright); color:#000; text-shadow:none; } }
 .atm-hint{ text-align:center; font-size:12px; min-height:1.4em; padding-top:6px; }
 
+/* Tic-Tac-Toe (js/apps/ttt.js) — Feldgröße und Schrift setzt die App per JS */
+.ttt-wrap{ display:flex; flex-direction:column; align-items:center; gap:10px; }
+.ttt-board{
+  display:grid; grid-template-columns:repeat(3, 1fr); grid-template-rows:repeat(3, 1fr);
+  width:300px; height:300px;
+  border:1px solid rgba(51,255,102,.35);
+  box-shadow:0 0 18px rgba(51,255,102,.12), inset 0 0 24px rgba(51,255,102,.06);
+}
+.ttt-cell{
+  position:relative; display:flex; align-items:center; justify-content:center;
+  border-right:2px solid rgba(51,255,102,.55); border-bottom:2px solid rgba(51,255,102,.55);
+  box-shadow:0 0 6px rgba(51,255,102,.25);
+  cursor:pointer; touch-action:manipulation; overflow:hidden;
+}
+.ttt-cell:nth-child(3n){ border-right:0; }
+.ttt-cell:nth-child(n+7){ border-bottom:0; }
+.ttt-cell:hover:not(.ttt-full){ background:rgba(51,255,102,.06); }
+.ttt-art{
+  margin:0; font:inherit; font-weight:600; line-height:1; white-space:pre;
+  color:var(--green-bright);
+  text-shadow:0 0 4px rgba(166,255,184,.8), 0 0 14px rgba(51,255,102,.5);
+}
+.ttt-o .ttt-art{ color:var(--green); }
+.ttt-num{
+  position:absolute; left:6px; top:3px; font-size:11px; line-height:1;
+  color:var(--green-dim); opacity:.7; text-shadow:none;
+}
+.ttt-full .ttt-num{ display:none; }
+
+/* Cursor: Eckklammern wie bei einer Auswahl im Terminal */
+.ttt-cur::before, .ttt-cur::after{
+  content:""; position:absolute; inset:8%; pointer-events:none;
+  border:2px solid var(--green-bright);
+  -webkit-mask:
+    linear-gradient(#000 0 0) top left / 22% 22% no-repeat,
+    linear-gradient(#000 0 0) top right / 22% 22% no-repeat,
+    linear-gradient(#000 0 0) bottom left / 22% 22% no-repeat,
+    linear-gradient(#000 0 0) bottom right / 22% 22% no-repeat;
+          mask:
+    linear-gradient(#000 0 0) top left / 22% 22% no-repeat,
+    linear-gradient(#000 0 0) top right / 22% 22% no-repeat,
+    linear-gradient(#000 0 0) bottom left / 22% 22% no-repeat,
+    linear-gradient(#000 0 0) bottom right / 22% 22% no-repeat;
+  box-shadow:0 0 8px rgba(166,255,184,.6);
+}
+.ttt-cur::after{ display:none; }
+.ttt-busy .ttt-cell{ cursor:wait; }
+.ttt-busy .ttt-cur::before{ opacity:.35; }
+
+/* Computer "scannt" Felder beim Nachdenken */
+.ttt-scan{ background:rgba(255,180,84,.10); }
+.ttt-scan .ttt-num{ color:var(--amber); opacity:1; }
+
+/* neuer Zug: kurzes Aufflackern */
+.ttt-new .ttt-art{ animation:ttt-in .35s steps(4) both; }
+@keyframes ttt-in{ 0%{opacity:0} 25%{opacity:1} 50%{opacity:.3} 100%{opacity:1} }
+
+/* Gewinnreihe */
+.ttt-win{ background:rgba(166,255,184,.14); }
+.ttt-win .ttt-art{ animation:ttt-blink .5s steps(2) infinite; color:#fff; }
+.ttt-lose{ background:rgba(255,90,90,.12); }
+.ttt-lose .ttt-art{ animation:ttt-blink .5s steps(2) infinite; color:var(--red); text-shadow:0 0 6px rgba(255,90,90,.9), 0 0 16px rgba(255,90,90,.5); }
+@keyframes ttt-blink{ 50%{ opacity:.25; } }
+.ttt-dead .ttt-cell:not(.ttt-win):not(.ttt-lose) .ttt-art{ opacity:.35; }
+
+/* Ausgabezeile unter dem Feld */
+.ttt-msg{
+  min-height:1.45em; max-width:100%; font-size:13px; color:var(--green-dim);
+  text-align:center;   /* darf auf dem Handy umbrechen, sonst wird links abgeschnitten */
+}
+.ttt-msg b{ color:var(--green-bright); font-weight:500; }
+.ttt-msg .warn{ color:var(--amber); }
+.ttt-msg .err{ color:var(--red); }
+.ttt-msg .cur{ animation:blink 1s steps(2) infinite; }
+
+.app-overlay .ttt-score{ color:var(--green-bright); }
+.app-overlay.ttt-ov{ background:rgba(0,0,0,.6); cursor:pointer; }
+
+@media (prefers-reduced-motion: reduce){
+  .ttt-win .ttt-art, .ttt-lose .ttt-art, .ttt-new .ttt-art{ animation:none; }
+}
+
 /* exit: Bild zerfällt, danach nur noch der Cursor */
 .shatter{ position:fixed; inset:0; z-index:45; pointer-events:none; overflow:hidden; background:#000; }
 .shard{ position:absolute; overflow:hidden; will-change:transform; }
