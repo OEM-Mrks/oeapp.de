@@ -101,11 +101,12 @@ function unlockAudio(){
       speechUnlocked = true;
       const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u);
     }
-    // stummgeschaltete Kontexte (race in Pause) legen sich danach von selbst wieder schlafen
-    for (const a of audioCtxs) if (a.state === "suspended") a.resume().catch(() => {});
+    // stummgeschaltete Kontexte (race in Pause) legen sich danach von selbst wieder schlafen;
+    // iOS meldet nach Anruf, Siri, Sperrbildschirm o. ä. "interrupted" statt "suspended"
+    for (const a of audioCtxs) if (a.state !== "running" && a.state !== "closed") a.resume().catch(() => {});
   } catch(e){}
 }
-for (const ev of ["touchend", "click", "keydown"]) addEventListener(ev, unlockAudio, { capture: true, passive: true });
+for (const ev of ["touchend", "pointerup", "click", "keydown"]) addEventListener(ev, unlockAudio, { capture: true, passive: true });
 
 /* -------- Speicher (Highscores etc.), darf fehlen -------- */
 

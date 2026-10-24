@@ -18,6 +18,8 @@ const TRACKS = {
   chomp:  { bpm: 132, root: 48, prog: [0, 5, 3, 4], seed: 21,   four: true  },
   race:   { bpm: 104, root: 54, prog: [0, 5, 2, 6], seed: 42,   four: false },
   tron:   { bpm: 138, root: 47, prog: [0, 0, 5, 6], seed: 1982, four: true  },
+  ttt:    { bpm: 96,  root: 55, prog: [0, 3, 5, 6], seed: 33,   four: false },
+  ssp:    { bpm: 100, root: 55, prog: [0, 3, 4, 0], seed: 333,  four: true  },
 };
 const SCALE = [0, 2, 3, 5, 7, 8, 10];   // natürliches Moll
 const LEAD_RHYTHMS = [               // 1 = Ton beginnt (16tel, zwei Takte)
@@ -44,8 +46,16 @@ const seeded = seed => () => {
 };
 
 /* ---------- Audio-Grundgerüst: Master, Hall, Echo ---------- */
+/* iOS: WebAudio verstummt sonst beim Lautlos-Schalter; "playback" spielt trotzdem,
+   aber nur solange die Musik eingeschaltet ist */
+function session(){
+  try{ if (navigator.audioSession) navigator.audioSession.type = enabled ? "playback" : "auto"; } catch(e){}
+}
+const asleep = () => ac.state !== "running" && ac.state !== "closed";   // auch iOS-"interrupted"
+
 function init(){
   if (ac) return true;
+  session();
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return false;
   ac = new AC();
@@ -222,8 +232,8 @@ function pump(){
 function play(id){
   const tr = TRACKS[id];
   if (!tr || !enabled || !init()) return stop();
+  if (asleep()) ac.resume().catch(() => {});
   if (track === tr && timer) return;
-  if (ac.state === "suspended") ac.resume().catch(() => {});
   track = tr; lead = compose(tr); step = 0; nextT = ac.currentTime + 0.12;
   dly.delayTime.value = 3 * 60 / tr.bpm / 4;
   master.gain.cancelScheduledValues(ac.currentTime);
@@ -248,7 +258,8 @@ seg.title = "Synthwave-Musik in den Spielen ein/aus";
 function label(){ seg.innerHTML = `<span>♪ musik&nbsp;<b>${enabled ? "an" : "aus"}</b></span>`; seg.classList.toggle("on", enabled); }
 seg.addEventListener("click", () => {
   enabled = !enabled; store.set(enabled); label();
-  if (enabled){ init(); if (ac.state === "suspended") ac.resume().catch(() => {}); if (appId) play(appId); }
+  session();
+  if (enabled){ init(); if (asleep()) ac.resume().catch(() => {}); if (appId) play(appId); }
   else stop();
 });
 const spacer = document.querySelector(".botbar .spacer");
@@ -259,7 +270,7 @@ addEventListener("oe:app", e => { appId = e.detail; if (appId && TRACKS[appId]) 
 document.addEventListener("visibilitychange", () => {
   if (!ac) return;
   if (document.hidden){ ac.suspend().catch(() => {}); }
-  else if (timer){ ac.resume().then(() => { nextT = Math.max(nextT, ac.currentTime + 0.05); }).catch(() => {}); }
+  else if (timer && asleep()){ ac.resume().then(() => { nextT = Math.max(nextT, ac.currentTime + 0.05); }).catch(() => {}); }
 });
 
 window.OE_MUSIC = { tracks: TRACKS, play, stop };
