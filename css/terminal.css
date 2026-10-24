@@ -150,6 +150,8 @@ body{
   min-height:0;
 }
 .side > .pane{ padding:12px 14px; }
+/* F-Tasten-Knöpfe ergeben auf Touch-Geräten keinen Sinn */
+.touch .botbar .seg[data-go="snake"], .touch .botbar .seg[data-go="blocks"], .touch .botbar .seg[data-go="exit"]{ display:none; }
 
 /* Quote block */
 .quote{
@@ -171,6 +173,21 @@ body{
 .quote .author{ margin-top:12px; font-size:12px; color:var(--green-dim); }
 .quote .author b{ color:var(--green); font-weight:500;}
 
+/* niedrige Fenster (iPad quer, kleine Laptops): rechts nur so viel, wie ganz draufpasst */
+@media (min-width:901px) and (max-height:860px){
+  .side{ grid-template-rows: auto auto 1fr; }
+  .side > .pane:nth-child(3){ display:none; }            /* processes */
+  .quote{ min-height:0; }
+  .quote .text{ min-height:0; font-size:14px; }
+}
+@media (min-width:901px) and (max-height:700px){
+  .side{ grid-template-rows: auto 1fr; }
+  .side > .pane:nth-child(4){ display:none; }            /* signature */
+}
+@media (min-width:901px) and (max-height:560px){
+  .side{ grid-template-rows: 1fr; }
+  .side > .pane:nth-child(2){ display:none; }            /* resources */
+}
 /* meters */
 .meters .row{
   display:grid; grid-template-columns: 64px 1fr 56px;
