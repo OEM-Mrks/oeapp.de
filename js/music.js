@@ -19,7 +19,8 @@ const TRACKS = {
   race:   { bpm: 104, root: 54, prog: [0, 5, 2, 6], seed: 42,   four: false },
   tron:   { bpm: 138, root: 47, prog: [0, 0, 5, 6], seed: 1982, four: true  },
   ttt:    { bpm: 96,  root: 55, prog: [0, 3, 5, 6], seed: 33,   four: false },
-  ssp:    { bpm: 100, root: 55, prog: [0, 3, 4, 0], seed: 333,  four: true  },
+  ssp:    { bpm: 100, root: 53, prog: [0, 3, 4, 0], seed: 333,  four: true  },
+  dilemma:{ bpm: 84,  root: 45, prog: [0, 5, 0, 4], seed: 1980, four: false },
 };
 const SCALE = [0, 2, 3, 5, 7, 8, 10];   // natürliches Moll
 const LEAD_RHYTHMS = [               // 1 = Ton beginnt (16tel, zwei Takte)
