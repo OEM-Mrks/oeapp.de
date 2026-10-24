@@ -3,18 +3,27 @@
    und Höhe. Gezeichnet wird von hinten nach vorne (Maler-Prinzip): jedes
    Segment füllt seinen Boden über die volle Breite, dadurch verdecken nähere
    Kuppen automatisch alles dahinter – auch Palmen, Laternen und Gegner.
-   Checkpoints bringen Zeit. Alles ist Canvas-Code, keine Bilddateien. */
+   Checkpoints bringen Zeit. Ein Rennen geht über zwei Runden bis ins Ziel,
+   danach wartet Stage 2 bei Nacht. Alles ist Canvas-Code, keine Bilddateien. */
 
 OE.register({
   id: "race",
   alias: ["racer", "drive"],
   title: "race.exe",
-  desc: "Autorennen in Pseudo-3D. Überholen, Checkpoints, Zeit.",
+  desc: "Autorennen in Pseudo-3D. Zwei Stages, Checkpoints, Ziel auf Zeit.",
   start(ctx){
     const SEG = 200, ROAD = 2000, CAM_H = 1000, FOV = 100;
     const DEPTH = 1 / Math.tan((FOV / 2) * Math.PI / 180);
     const MAX = SEG * 60, ACC = MAX / 5, BRAKE = -MAX, DECEL = -MAX / 5, OFF_DECEL = -MAX / 2, OFF_MAX = MAX / 4;
-    const CHECK_EVERY = 700, BONUS = 12;   // Segmente zwischen zwei Checkpoints (ungefähr), Zeitbonus
+    const LIMIT = 90;                       // harte Obergrenze je Stage in Sekunden
+    // Stages: Runden, Segmente pro Runde, Startzeit, Bonus je Checkpoint, Verkehr, Kurven, Hügel,
+    // Wertung (Sekunden für S/A/B, langsamer = C). Startzeit + 3 Boni bleibt unter LIMIT.
+    const STAGES = [
+      { name: "STAGE 1", sub: "SUNSET DRIVE", laps: 2, segs: 1500, t0: 25, bonus: 18, cars: 22, curve: 6, hill: 60, night: false, rank: [58, 65, 72] },
+      { name: "STAGE 2", sub: "NIGHT CITY", laps: 2, segs: 1300, t0: 22, bonus: 16, cars: 34, curve: 8.5, hill: 90, night: true, rank: [54, 60, 67] },
+    ];
+    const RANKS = [["S", "TURBO-LEGENDE"], ["A", "ASPHALT-PROFI"], ["B", "SONNTAGSFAHRER"], ["C", "GERADE SO"]];
+    let stage = 0, ST = STAGES[0];
     const KM = 154000;                      // Streckeneinheiten pro km (MAX entspricht 280 km/h)
     const CAR = 0.15;                       // halbe Autobreite in Straßenbreiten
     const LANES = 3, RUMBLE = 1.12;         // Fahrspuren, Straßenbreite inkl. Randstreifen
@@ -44,11 +53,13 @@ OE.register({
     ov.style.background = "rgba(0,0,0,.5)";
 
     /* ---------- Strecke ---------- */
+    // wird je Stage neu gebaut; Länge genau ST.segs, damit Runden und Wertung vergleichbar bleiben
     const segs = [];
+    let N = 0, LEN = 0, nCp = 2, cpStep = 0, nextCp = null;
     const lastY = () => segs.length ? segs[segs.length - 1].p2.y : 0;
     function addSeg(curve, y){
       const n = segs.length;
-      segs.push({ i: n, curve, p1: { y: lastY(), z: n * SEG }, p2: { y, z: (n + 1) * SEG }, sp: null, cp: false,
+      segs.push({ i: n, curve, p1: { y: lastY(), z: n * SEG }, p2: { y, z: (n + 1) * SEG }, sp: null, cp: false, fin: n < 3,
         ax: 0, ay: 0, aw: 0, bx: 0, by: 0, bw: 0, n: 0, fr: -1, fog: 0, fi: 0, road: false });
     }
     const ease = (a, b, t) => a + (b - a) * ((-Math.cos(t * Math.PI) / 2) + 0.5);
@@ -58,55 +69,65 @@ OE.register({
       for (let n = 0; n < hold; n++) addSeg(curve, ease(y0, y1, (enter + n) / total));
       for (let n = 0; n < leave; n++) addSeg(ease(curve, 0, n / leave), ease(y0, y1, (enter + hold + n) / total));
     }
-    addRoad(30, 40, 30, 0, 0);
-    const R = () => ctx.rint(0, 1) ? 1 : -1;
-    for (let i = 0; i < 18; i++){
-      const kind = i % 3;
-      const curve = kind === 0 ? 0 : R() * (2 + Math.random() * 4);
-      const hill = (Math.random() - 0.5) * (i % 2 ? 60 : 20);
-      addRoad(25, 30 + ctx.rint(0, 50), 25, curve, hill);
-    }
-    addRoad(40, 40, 40, 0, -lastY() / SEG);   // zurück auf Höhe 0, damit die Runde nahtlos ist
-    const N = segs.length, LEN = N * SEG;
     const segAt = z => segs[Math.floor((((z % LEN) + LEN) % LEN) / SEG)];
-
-    /* ---------- Kulisse am Straßenrand ---------- */
-    // Checkpoints gleichmäßig verteilen, damit nie zwei Tore direkt hintereinander stehen
-    const nCp = Math.max(1, Math.round(N / CHECK_EVERY)), cpStep = N / nCp;
-    const put = (s, sp) => (s.sp || (s.sp = [])).push(sp);
-    for (let k = 0; k < nCp; k++){
-      const s = segs[Math.floor(k * cpStep)];
-      s.cp = true; put(s, { kind: "gate", off: 0, text: k ? "CHECKPOINT" : "START" });
-    }
-    // Segmente bis zum nächsten Checkpoint (für die Fortschrittsanzeige), zweimal wegen Rundenübergang
-    const nextCp = new Int32Array(N);
-    for (let pass = 0, d = 0; pass < 2; pass++) for (let i = N - 1; i >= 0; i--){ d = segs[i].cp ? 0 : d + 1; nextCp[i] = d; }
-    const nearGate = i => { for (let k = -4; k <= 4; k++) if (segs[(i + k + N) % N].cp) return true; return false; };
+    const R = () => ctx.rint(0, 1) ? 1 : -1;
     const BOARDS = ["OEAPP.DE", "ESC = EXIT", "VOLLGAS", "sudo gas", "404 BREMSE", "NO SIGNAL", "> run race", "TURBO.EXE"];
     const SOLID = { palm: 0.06, lamp: 0.03, chev: 0.12, board: 0.72 };   // halbe Breite fürs Anfahren
-    for (const s of segs){
-      const i = s.i;
-      if (nearGate(i)) continue;
-      const zone = Math.floor(i / 160) % 4;   // 0 Palmenstrand · 1 Stadtrand · 2 Wüste · 3 gemischt
-      const lampEvery = zone === 1 ? 12 : 30;
-      if (i % lampEvery === 0) put(s, { kind: "lamp", off: (i / lampEvery) % 2 ? 1.28 : -1.28 });
-      else if (Math.abs(s.curve) > 1.2 && i % 6 === 0) put(s, { kind: "chev", off: s.curve > 0 ? -1.36 : 1.36, dir: s.curve > 0 ? 1 : -1 });
-      if (i % 70 === 35 && zone !== 1) put(s, { kind: "board", off: Math.random() < 0.5 ? -2.2 : 2.2, text: BOARDS[ctx.rint(0, BOARDS.length - 1)] });
-      else if (Math.random() < [0.24, 0.05, 0.03, 0.12][zone]){
-        const side = Math.random() < 0.5 ? -1 : 1;
-        put(s, { kind: "palm", off: side * (1.55 + Math.random() * 2.6), lean: side * (0.08 + Math.random() * 0.2), hgt: 0.95 + Math.random() * 0.45 });
+    const put = (s, sp) => (s.sp || (s.sp = [])).push(sp);
+
+    function build(){
+      segs.length = 0;
+      addRoad(30, 40, 30, 0, 0);
+      for (let i = 0; segs.length + 130 <= ST.segs - 120; i++){
+        const kind = i % 3;
+        const curve = kind === 0 ? 0 : R() * (2 + Math.random() * (ST.curve - 2));
+        const hill = (Math.random() - 0.5) * (i % 2 ? ST.hill : 20);
+        addRoad(25, 30 + ctx.rint(0, 50), 25, curve, hill);
+      }
+      addRoad(40, ST.segs - segs.length - 80, 40, 0, -lastY() / SEG);   // zurück auf Höhe 0, damit die Runde nahtlos ist
+      N = segs.length; LEN = N * SEG;
+
+      /* Kulisse am Straßenrand */
+      // Checkpoints gleichmäßig verteilen: Start/Ziel und einer zur Rundenhälfte
+      cpStep = N / nCp;
+      for (let k = 0; k < nCp; k++){
+        const s = segs[Math.floor(k * cpStep)];
+        s.cp = true; put(s, k ? { kind: "gate", off: 0, text: "CHECKPOINT" } : { kind: "gate", off: 0, fin: true });
+      }
+      // Segmente bis zum nächsten Checkpoint (für die Fortschrittsanzeige), zweimal wegen Rundenübergang
+      nextCp = new Int32Array(N);
+      for (let pass = 0, d = 0; pass < 2; pass++) for (let i = N - 1; i >= 0; i--){ d = segs[i].cp ? 0 : d + 1; nextCp[i] = d; }
+      const nearGate = i => { for (let k = -4; k <= 4; k++) if (segs[(i + k + N) % N].cp) return true; return false; };
+      for (const s of segs){
+        const i = s.i;
+        if (nearGate(i)) continue;
+        let zone = Math.floor(i / 160) % 4;   // 0 Palmenstrand · 1 Stadtrand · 2 Wüste · 3 gemischt
+        if (ST.night && zone === 3) zone = 1;  // nachts mehr Stadt mit Laternen
+        const lampEvery = zone === 1 ? 12 : 30;
+        if (i % lampEvery === 0) put(s, { kind: "lamp", off: (i / lampEvery) % 2 ? 1.28 : -1.28 });
+        else if (Math.abs(s.curve) > 1.2 && i % 6 === 0) put(s, { kind: "chev", off: s.curve > 0 ? -1.36 : 1.36, dir: s.curve > 0 ? 1 : -1 });
+        if (i % 70 === 35 && zone !== 1) put(s, { kind: "board", off: Math.random() < 0.5 ? -2.2 : 2.2, text: BOARDS[ctx.rint(0, BOARDS.length - 1)] });
+        else if (Math.random() < [0.24, 0.05, 0.03, 0.12][zone]){
+          const side = Math.random() < 0.5 ? -1 : 1;
+          put(s, { kind: "palm", off: side * (1.55 + Math.random() * 2.6), lean: side * (0.08 + Math.random() * 0.2), hgt: 0.95 + Math.random() * 0.45 });
+        }
       }
     }
 
     /* ---------- Farben mit Nebel (vorberechnet, damit pro Bild keine Strings entstehen) ---------- */
-    const FL = 24, FOG = [5, 34, 15];
+    const FL = 24;
+    let FOG = [5, 34, 15], L = null;
     const lut = c => Array.from({ length: FL }, (_, k) => rgb(mix(c, FOG, k / (FL - 1))));
-    const L = {
-      groundA: lut([2, 9, 4]), groundB: lut([4, 15, 7]),
-      roadA: lut([13, 21, 16]), roadB: lut([18, 28, 21]),
-      rumbleA: lut([36, 190, 80]), rumbleB: lut([5, 26, 12]),
-      lane: lut([166, 255, 184]), edge: lut([90, 255, 140]), grid: lut([18, 105, 44]), check: lut([255, 180, 84]),
-    };
+    function palette(){   // nachts dunklerer Nebel, die Ferne verschwindet im Schwarz
+      FOG = ST.night ? [2, 12, 6] : [5, 34, 15];
+      L = {
+        groundA: lut([2, 9, 4]), groundB: lut([4, 15, 7]),
+        roadA: lut([13, 21, 16]), roadB: lut([18, 28, 21]),
+        rumbleA: lut([36, 190, 80]), rumbleB: lut([5, 26, 12]),
+        lane: lut([166, 255, 184]), edge: lut([90, 255, 140]), grid: lut([18, 105, 44]), check: lut([255, 180, 84]),
+        fin: lut([235, 255, 240]),
+      };
+    }
     const GRID_X = [1.6, 2.4, 3.5, 5, 7.2, 10.5];   // Längslinien des Bodengitters (in halben Straßenbreiten)
 
     // Verläufe in Einheiten-Koordinaten: gelten für jedes skalierte Auto/Objekt
@@ -149,9 +170,10 @@ OE.register({
       let x;
       [skyC, x] = layer(w, HZ + 2);
       const sky = x.createLinearGradient(0, 0, 0, HZ);
-      sky.addColorStop(0, "#000000"); sky.addColorStop(0.55, "#020b05"); sky.addColorStop(0.86, "#06260f"); sky.addColorStop(1, "#11502a");
+      if (ST.night){ sky.addColorStop(0, "#000000"); sky.addColorStop(0.7, "#010503"); sky.addColorStop(1, "#05200d"); }
+      else { sky.addColorStop(0, "#000000"); sky.addColorStop(0.55, "#020b05"); sky.addColorStop(0.86, "#06260f"); sky.addColorStop(1, "#11502a"); }
       x.fillStyle = sky; x.fillRect(0, 0, w, HZ + 2);
-      const stars = Math.min(160, (w * HZ / 2500) | 0);
+      const stars = Math.min(ST.night ? 320 : 160, (w * HZ / (ST.night ? 1100 : 2500)) | 0);
       for (let k = 0; k < stars; k++){
         const sx = rnd() * w, sy = rnd() * HZ * 0.7, b = rnd();
         x.fillStyle = `rgba(200,255,212,${0.15 + b * 0.6})`;
@@ -162,6 +184,15 @@ OE.register({
       sunR = Math.max(26, Math.min(w * 0.17, HZ * 0.55));
       const S2 = sunR * 1.9;
       [sunC, x] = layer(S2 * 2, S2 * 2);
+      if (ST.night){   // Mond statt Sonne: blasse Scheibe mit Kratern und Hof
+        const mr = sunR * 0.26;
+        const halo2 = x.createRadialGradient(S2, S2, mr, S2, S2, mr * 3);
+        halo2.addColorStop(0, "rgba(166,255,184,.22)"); halo2.addColorStop(1, "rgba(166,255,184,0)");
+        x.fillStyle = halo2; x.fillRect(0, 0, S2 * 2, S2 * 2);
+        x.fillStyle = "#8fdca0"; x.beginPath(); x.arc(S2, S2, mr, 0, TAU); x.fill();
+        x.fillStyle = "rgba(26,138,54,.45)";
+        for (const [cx, cy, cr] of [[-0.3, -0.2, 0.22], [0.25, 0.15, 0.3], [-0.1, 0.45, 0.14], [0.4, -0.4, 0.12]]){ x.beginPath(); x.arc(S2 + cx * mr, S2 + cy * mr, cr * mr, 0, TAU); x.fill(); }
+      } else {
       const sg = x.createLinearGradient(0, S2 - sunR, 0, S2 + sunR);
       sg.addColorStop(0, "#fff0b8"); sg.addColorStop(0.45, C.amber); sg.addColorStop(1, C.red);
       x.fillStyle = sg; x.beginPath(); x.arc(S2, S2, sunR, 0, TAU); x.fill();
@@ -175,6 +206,7 @@ OE.register({
       halo.addColorStop(0, "rgba(255,180,84,.32)"); halo.addColorStop(1, "rgba(255,90,90,0)");
       x.fillStyle = halo; x.fillRect(0, 0, S2 * 2, S2 * 2);
       x.globalCompositeOperation = "source-over";
+      }
 
       // Gebirge als nahtlos kachelbarer Streifen (nur ganzzahlige Frequenzen)
       mtnW = Math.ceil(Math.max(w, 320) * 1.5); mtnH = Math.max(20, Math.min(HZ * 0.42, w * 0.24));
@@ -210,7 +242,7 @@ OE.register({
         x.fillStyle = "#000"; x.fillRect(px, y0, bw, bh);
         x.strokeStyle = "rgba(51,255,102,.55)"; x.lineWidth = 1; x.strokeRect(px + 0.5, y0 + 0.5, bw - 1, bh);
         for (let wy = y0 + 4; wy < cityH - 3; wy += 4) for (let wx = px + 3; wx < px + bw - 3; wx += 4){
-          if (rnd() < 0.2){ x.fillStyle = rnd() < 0.6 ? "rgba(255,180,84,.7)" : "rgba(166,255,184,.6)"; x.fillRect(wx, wy, 1.6, 1.6); }
+          if (rnd() < (ST.night ? 0.32 : 0.2)){ x.fillStyle = rnd() < 0.6 ? "rgba(255,180,84,.7)" : "rgba(166,255,184,.6)"; x.fillRect(wx, wy, 1.6, 1.6); }
         }
         if (rnd() < 0.25){ x.beginPath(); x.moveTo(px + bw / 2, y0); x.lineTo(px + bw / 2, y0 - 8); x.stroke(); x.fillStyle = C.red; x.fillRect(px + bw / 2 - 1, y0 - 10, 2, 2); }
         px += bw + rnd() * 5;
@@ -225,10 +257,12 @@ OE.register({
     /* ---------- Zustand ---------- */
     const COLS = [C.red, C.amber, C.pale, C.pink];
     let pos, px, speed, time, dist, lastSeg, cars, state = "ready", pausedFrom = "running";
+    let raceT = 0, startGap = 0, goal = 1, finAt = 0, lastT = [0, 0], cpText = "CHECKPOINT";   // Fahrzeit, Weg bis Startlinie, Weg bis Ziel
     let shake = 0, flash = 0, checkFlash = 0, goT = 0, countT = 0, hitCool = 0, overAt = 0, clock = 0;
     let skyOff = 0, sunDrift = 0, steerVis = 0, passed = 0, cpCount = 0, vmax = 0, gasOn = false, braking = false;
     let gear = 1, rpm = 0.12;
-    let best = +ctx.store.get("race.best", 0) || 0;
+    // Bestzeiten in Sekunden: Stage 1, Stage 2, beide zusammen (0 = noch keine)
+    const best = ["race.t1", "race.t2", "race.tot"].map(k => +ctx.store.get(k, 0) || 0);
     let muted = !!ctx.store.get("race.mute", false);
     let police = !!ctx.store.get("race.police", false);
     let cop = null, caughtT = 0, squeal = 0, horn = false;   // Polizeiauto, Banner "angehalten", Quietschen 0..1, Hupe gedrückt
@@ -236,15 +270,17 @@ OE.register({
 
     function reset(){
       pos = LEN - SEG * 14;   // kurz vor dem Starttor
-      px = 0; speed = 0; time = 30; dist = 0; shake = 0; flash = 0; checkFlash = 0; goT = 0; hitCool = 0;
+      px = 0; speed = 0; time = ST.t0; dist = 0; raceT = 0; shake = 0; flash = 0; checkFlash = 0; goT = 0; hitCool = 0;
       passed = 0; cpCount = 0; vmax = 0; steerVis = 0; sunDrift = 0; gear = 1; rpm = 0.12;
       lastSeg = segAt(pos + PLAYER_Z).i;
+      startGap = LEN - (pos + PLAYER_Z) % LEN; goal = startGap + ST.laps * LEN;
       parts.length = 0;
-      cars = Array.from({ length: 22 }, (_, i) => {
+      const nc = ST.cars, fast = ST.night ? 0.5 : 0.4;
+      cars = Array.from({ length: nc }, (_, i) => {
         const col = COLS[i % COLS.length], c3 = hex(col);
         return {
-          z: (i + 1) * (LEN / 23), off: (ctx.rint(0, 2) - 1) * 0.62 + (Math.random() - 0.5) * 0.12,
-          speed: MAX * (0.25 + Math.random() * 0.4), ahead: undefined, offT: null,
+          z: (i + 1) * (LEN / (nc + 1)), off: (ctx.rint(0, 2) - 1) * 0.62 + (Math.random() - 0.5) * 0.12,
+          speed: MAX * (0.25 + Math.random() * fast), ahead: undefined, offT: null,
           look: { col, type: ctx.rint(0, 2), body: rgb(mix(c3, [0, 0, 0], 0.84)), cab: rgb(mix(c3, [0, 0, 0], 0.92)) },
           n: 0, t: 0, X: 0, Y: 0, S: 0, fog: 0,
         };
@@ -257,12 +293,17 @@ OE.register({
     function overlay(html){ ov.hidden = !html; if (html) ov.innerHTML = html; }
     const sfx = (f, ms, type, vol) => { if (!muted) ctx.beep(f, ms, type, vol); };
 
+    // Zeit als m:ss.s
+    const fmtT = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
+    const lapNo = () => dist < startGap ? 1 : Math.min(ST.laps, Math.floor((dist - startGap) / LEN) + 1);
+    const rankOf = (t, lim) => RANKS[lim.findIndex(v => t <= v) < 0 ? 3 : lim.findIndex(v => t <= v)];
+
     let barKey = "";
     function updBar(){
       const key = best + "|" + muted + "|" + police;
       if (key === barKey) return;
       barKey = key;
-      bar.innerHTML = `<span>rekord <b>${best.toFixed(2)} km</b></span>
+      bar.innerHTML = `<span>bestzeit <b>${best[0] ? fmtT(best[0]) : "–"}</b>${best[2] ? ` · gesamt <b>${fmtT(best[2])}</b>` : ""}</span>
         <span data-mute style="cursor:pointer">ton <b>${muted ? "aus" : "an"}</b>${ctx.touch ? "" : " (M)"}</span>
         <span data-police style="cursor:pointer">polizei <b style="color:${police ? "#7ab8ff" : ""}">${police ? "an" : "aus"}</b>${ctx.touch ? "" : " (C)"}</span>
         <span class="right">${ctx.touch ? "▼ bremst · HUP hupt · ⏯ pause" : "↑ gas · ↓ bremse · ← → lenken · H hupe · P pause"}</span>`;
@@ -324,7 +365,7 @@ OE.register({
     }
     function audioTick(dt){
       if (!eng) return;
-      const on = !muted && (state === "running" || state === "count");
+      const on = !muted && (state === "running" || state === "count" || state === "finish");
       quietT = on ? 0 : quietT + dt;
       audT -= dt;
       if (audT > 0) return;
@@ -437,10 +478,10 @@ OE.register({
 
     /* ---------- Spiellogik ---------- */
     function update(dt){
-      const k = ctx.keys;
-      const gas = k.has("ArrowUp") || k.has("w") || (ctx.touch && !k.has("ArrowDown"));
-      const brake = k.has("ArrowDown") || k.has("s");
-      const left = k.has("ArrowLeft") || k.has("a"), right = k.has("ArrowRight") || k.has("d");
+      const k = ctx.keys, auto = state === "finish";   // nach dem Ziel rollt das Auto von allein aus
+      const gas = !auto && (k.has("ArrowUp") || k.has("w") || (ctx.touch && !k.has("ArrowDown")));
+      const brake = !auto && (k.has("ArrowDown") || k.has("s"));
+      const left = !auto && (k.has("ArrowLeft") || k.has("a")), right = !auto && (k.has("ArrowRight") || k.has("d"));
       gasOn = gas; braking = brake && speed > 0;
       const ratio = speed / MAX;
       const steer = dt * 2.2 * ratio;
@@ -457,7 +498,7 @@ OE.register({
         brake && ratio > 0.35 ? (ratio - 0.35) * 1.6 : 0), 0, 1) * (Math.abs(px) > 1 ? 0.2 : 1);
       squeal += (sqT - squeal) * Math.min(1, dt * 10);
       // Hupe: Auto vor dir auf deiner Spur wechselt die Spur
-      horn = k.has("h");
+      horn = !auto && k.has("h");
       if (horn) for (const c of cars){
         const gap = ((c.z - (pos + PLAYER_Z)) % LEN + LEN) % LEN;
         if (gap < SEG * 30 && Math.abs(c.off - px) < 0.45 && c.offT == null){
@@ -506,7 +547,7 @@ OE.register({
       }
 
       // Polizei: knapp langsamer als Vollgas, holt aber jede Schwäche auf
-      if (cop){
+      if (cop && !auto){
         if (cop.wait > 0) cop.wait -= dt;
         else {
           const back = copGap();
@@ -533,19 +574,23 @@ OE.register({
       const si = segAt(pos + PLAYER_Z).i;
       for (let j = lastSeg, guard = 0; j !== si && guard < 64; guard++){
         j = (j + 1) % N;
-        if (segs[j].cp && dist > SEG * 30){   // das Starttor zählt erst nach einer Runde
-          time += BONUS; checkFlash = 1.8; cpCount++;
+        if (segs[j].cp && dist > SEG * 30 && dist < goal - SEG * 5 && !auto){   // Starttor zählt erst nach einer Runde, das Ziel gar nicht
+          time += ST.bonus; checkFlash = 1.8; cpCount++;
+          cpText = j === 0 ? (lapNo() === ST.laps ? "LETZTE RUNDE" : `RUNDE ${lapNo()}`) : "CHECKPOINT";
           sfx(988, 90); ctx.after(110, () => sfx(1318, 160));
-          ctx.log("OK", `race: Checkpoint — <span class="num">${(dist / KM).toFixed(2)} km</span>`);
+          ctx.log("OK", `race: ${cpText.toLowerCase()} — <span class="num">${fmtT(raceT)}</span>`);
         }
       }
       lastSeg = si;
-      const before = Math.ceil(time);
-      time -= dt;
-      if (time < 5 && Math.ceil(time) < before && time > 0) sfx(660, 50, "square", 0.03);
       vmax = Math.max(vmax, Math.round(speed / MAX * 280));
       engine(dt, gas);
-      if (time <= 0){ time = 0; over(); }
+      if (auto) return;
+      const before = Math.ceil(time);
+      raceT += dt;
+      time = Math.min(time - dt, LIMIT - raceT);   // nie länger als LIMIT, egal wie viele Boni
+      if (time < 5 && Math.ceil(time) < before && time > 0) sfx(660, 50, "square", 0.03);
+      if (dist >= goal) finish();
+      else if (time <= 0){ time = 0; over(); }
     }
 
     function countdown(dt){
@@ -558,18 +603,81 @@ OE.register({
       else if (Math.ceil(countT) < before) sfx(440, 120, "square", 0.05);
     }
 
+    const glow = col => `color:${col};text-shadow:0 0 10px ${col}`;
+    // Knöpfe im Overlay (für Maus und Finger); ohne Leerraum dazwischen, das Overlay ist white-space:pre
+    const btn = (act, label, main) => `<button type="button" data-act="${act}" style="font:inherit;font-size:14px;letter-spacing:.12em;cursor:pointer;padding:9px 16px;margin:4px;background:rgba(0,16,6,.85);color:${main ? C.amber : C.pale};border:1px solid ${main ? C.amber : C.dim};box-shadow:0 0 10px ${main ? "rgba(255,180,84,.35)" : "transparent"}">${label}</button>`;
+    const btns = (...b) => `<div style="margin-top:12px;white-space:normal">${b.join("")}</div>`;
+    const keyHint = s2 => ctx.touch ? "" : `<div style="color:${C.dim};margin-top:2px">${s2} · ESC = exit</div>`;
+
     function over(){
       state = "over"; overAt = clock; gasOn = false;
-      const km = dist / KM, rec = km > best && km > 0;
-      if (rec){ best = +km.toFixed(2); ctx.store.set("race.best", best); updBar(); }
+      const km = dist / KM, done = clamp(dist / goal, 0, 1);
       sfx(392, 160, "sawtooth"); ctx.after(170, () => sfx(294, 180, "sawtooth")); ctx.after(360, () => sfx(196, 420, "sawtooth"));
-      const glow = col => `color:${col};text-shadow:0 0 10px ${col}`;
-      overlay(`<div class="big" style="${glow(C.amber)}">ZEIT ABGELAUFEN</div>
-        <div style="font-size:28px;margin:4px 0;${glow(C.bright)}">${km.toFixed(2)} km</div>
-        <div style="color:${rec ? C.amber : C.dim}">${rec ? "★ neuer Rekord" : `Rekord ${best.toFixed(2)} km`}</div>
-        <div style="color:${C.dim}">${cpCount} Checkpoint${cpCount === 1 ? "" : "s"} · ${passed} überholt</div>
-        <div style="color:${C.dim}">Spitze ${vmax} km/h</div>
-        <div style="margin-top:10px">${ctx.touch ? "tippen" : "ENTER"} = nochmal · ESC = exit</div>`);
+      ctx.log("WARN", `race: ${ST.name.toLowerCase()} — Zeit abgelaufen nach <span class="num">${km.toFixed(2)} km</span>`);
+      overlay(`<div class="big" style="${glow(C.red)}">GAME OVER</div>
+        <div style="${glow(C.amber)}">ZEIT ABGELAUFEN · ${ST.name}</div>
+        <div style="font-size:28px;margin:4px 0;${glow(C.bright)}">${km.toFixed(2)} / ${(goal / KM).toFixed(2)} km</div>
+        <div style="color:${C.pale}">${Math.floor(done * 100)} % geschafft · Runde ${lapNo()}/${ST.laps}</div>
+        <div style="color:${C.dim}">${cpCount} Checkpoint${cpCount === 1 ? "" : "s"} · ${passed} überholt · Spitze ${vmax} km/h</div>
+        ${stage ? `<div style="color:${C.dim}">Stage 1 bleibt gewertet: ${fmtT(lastT[0])}</div>` : ""}
+        ${btns(btn("again", "↻ NOCHMAL", true), stage ? btn("s1", "VON VORN") : "")}
+        ${keyHint(stage ? "ENTER = nochmal · R = von vorn" : "ENTER = nochmal")}`);
+    }
+
+    // Zieleinlauf: Zeit sichern, Konfetti, Fanfare – das Ergebnis kommt nach dem Ausrollen
+    let res = null;
+    function finish(){
+      state = "finish"; finAt = clock; checkFlash = 0;
+      const t = +raceT.toFixed(1); lastT[stage] = t;
+      const rec = !best[stage] || t < best[stage];
+      if (rec){ best[stage] = t; ctx.store.set(["race.t1", "race.t2"][stage], t); }
+      let tot = 0, recTot = false;
+      if (stage === 1 && lastT[0]){
+        tot = +(lastT[0] + t).toFixed(1); recTot = !best[2] || tot < best[2];
+        if (recTot){ best[2] = tot; ctx.store.set("race.tot", tot); }
+      }
+      res = { t, rec, tot, recTot, rest: Math.max(0, time) };
+      updBar();
+      [523, 659, 784, 1046].forEach((f, i) => ctx.after(i * 120, () => sfx(f, i === 3 ? 420 : 110, "square", 0.05)));
+      ctx.log("OK", `race: ${ST.name.toLowerCase()} im Ziel — <span class="num">${fmtT(t)}</span>${rec ? " ★ Bestzeit" : ""}`);
+      confetti(60);
+    }
+    function confetti(n){
+      const cols = [C.amber, C.pink, C.bright, C.green, C.red];
+      for (let k = 0; k < n && parts.length < 180; k++){
+        const life = 1.8 + Math.random() * 1.4;
+        parts.push({ x: Math.random() * w, y: -10 - Math.random() * h * 0.3, vx: (Math.random() - 0.5) * 90, vy: 50 + Math.random() * 120,
+          life, max: life, grav: 40, col: cols[k % cols.length], spark: false, conf: true, ph: Math.random() * TAU });
+      }
+    }
+    function results(){
+      state = "done"; overAt = clock;
+      const { t, rec, tot, recTot, rest } = res;
+      const [rk, rname] = rankOf(t, ST.rank);
+      const stats = `<div style="color:${C.dim}">${passed} überholt · Spitze ${vmax} km/h · Rest ${Math.floor(rest)} s</div>`;
+      const head = `<div class="big" style="font-size:30px;${glow(C.green)}">ZIEL!</div>
+        <div style="color:${C.dim}">${ST.name} · ${ST.sub}</div>
+        <div style="font-size:34px;margin:2px 0;${glow(C.bright)}">${fmtT(t)}</div>
+        <div style="color:${rec ? C.amber : C.dim}">${rec ? "★ neue Bestzeit" : `Bestzeit ${fmtT(best[stage])}`}</div>`;
+      if (stage === 0){
+        overlay(`${head}
+          <div style="margin-top:6px">Wertung <b style="font-size:22px;${glow(C.amber)}">${rk}</b> <span style="color:${C.pale}">${rname}</span></div>
+          ${stats}
+          <div style="color:#7ab8ff;margin-top:6px">als Nächstes: STAGE 2 · NIGHT CITY</div>
+          ${btns(btn("next", "STAGE 2 ▸", true), btn("again", "↻ NOCHMAL"))}
+          ${keyHint("ENTER = Stage 2 · R = nochmal")}`);
+      } else {
+        const lim = STAGES[0].rank.map((v, i) => v + STAGES[1].rank[i]);
+        const [rk2, rname2] = rankOf(tot, lim);
+        overlay(`${head}
+          <div style="margin-top:6px;color:${C.dim}">Stage 1 ${fmtT(lastT[0])} + Stage 2 ${fmtT(t)}</div>
+          <div style="font-size:22px;${glow(C.amber)}">GESAMT ${fmtT(tot)}</div>
+          <div style="color:${recTot ? C.amber : C.dim}">${recTot ? "★ neue Gesamtbestzeit" : `Bestzeit gesamt ${fmtT(best[2])}`}</div>
+          <div style="margin-top:6px">Wertung <b style="font-size:22px;${glow(C.amber)}">${rk2}</b> <span style="color:${C.pale}">${rname2}</span></div>
+          ${stats}
+          ${btns(btn("s1", "↻ NOCHMAL", true), btn("again", "STAGE 2 NOCHMAL"))}
+          ${keyHint("ENTER = nochmal · 2 = Stage 2 nochmal")}`);
+      }
     }
 
     /* ---------- Projektion ---------- */
@@ -667,10 +775,10 @@ OE.register({
         }
         g.fill();
       }
-      // Schachbrettlinie an Start und Checkpoints
-      if (seg.cp){
-        g.fillStyle = L.check[fi]; g.beginPath();
-        for (let k = 0; k < 10; k += 2){
+      // Schachbrettlinie an Checkpoints (orange) und an Start/Ziel (weiß, drei Reihen)
+      if (seg.cp || seg.fin){
+        g.fillStyle = seg.fin ? L.fin[fi] : L.check[fi]; g.beginPath();
+        for (let k = seg.fin ? seg.i & 1 : 0; k < 10; k += 2){
           const o1 = -1 + k * 0.2, o2 = o1 + 0.2;
           quad(ax + aw * o1, ay, ax + aw * o2, ay, bx + bw * o2, by, bx + bw * o1, by);
         }
@@ -744,6 +852,21 @@ OE.register({
           g.globalAlpha = A; g.fillStyle = blink ? C.red : C.amber;
           g.fillRect(-1.25, -1.1, 0.1, 0.1); g.fillStyle = blink ? C.amber : C.red; g.fillRect(1.15, -1.1, 0.1, 0.1);
           label = sp.text; lsize = S * 0.15; ly = Y - 1.045 * S + lsize * 0.36; lcol = C.amber;
+          if (sp.fin){
+            const l = lapNo(), last = dist > startGap + SEG * 30 && l === ST.laps;
+            label = dist < startGap + SEG * 30 ? "START" : last ? "ZIEL" : `RUNDE ${l + 1}/${ST.laps}`;
+            if (last){   // Zielbanner: Schachbrett obendrauf, Fahnen an den Pfosten
+              lcol = C.bright; g.globalAlpha = A;
+              for (let c = 0; c < 26; c++) for (let r = 0; r < 2; r++){
+                g.fillStyle = (c + r) & 1 ? "#000" : "#e8ffee"; g.fillRect(-1.3 + c * 0.1, -1.37 + r * 0.1, 0.1, 0.1);
+              }
+              for (const sd of [-1, 1]) for (let c = 0; c < 4; c++) for (let r = 0; r < 3; r++){
+                const wv = Math.sin(clock * 7 + c * 0.9) * 0.025;
+                g.fillStyle = (c + r) & 1 ? "#000" : "#e8ffee";
+                g.fillRect(sd * 1.24 + (sd > 0 ? 0.04 : -0.04 - 0.36) + c * 0.09, -0.9 + r * 0.09 + wv, 0.09, 0.09);
+              }
+            }
+          }
           break;
         }
       }
@@ -839,7 +962,7 @@ OE.register({
       g.globalAlpha = 1;
       g.drawImage(skyC, 0, 0, w, HZ + 2);
       const S2 = sunR * 1.9;
-      g.drawImage(sunC, w / 2 + sunDrift * w - S2, HZ - sunR * 0.5 - S2, S2 * 2, S2 * 2);
+      g.drawImage(sunC, w / 2 + sunDrift * w - S2 + (ST.night ? w * 0.22 : 0), HZ - sunR * (ST.night ? 1.3 : 0.5) - S2, S2 * 2, S2 * 2);
       // Gebirge und Skyline wandern in Kurven unterschiedlich schnell (Parallaxe)
       const tile = (img, tw, th, off) => {
         const o = ((off % tw) + tw) % tw;
@@ -857,7 +980,10 @@ OE.register({
       g.globalCompositeOperation = "lighter";
       for (const p of parts){
         g.globalAlpha = p.life / p.max;
-        if (p.spark){
+        if (p.conf){   // Konfetti: flatternde Plättchen
+          const fl = Math.abs(Math.sin(p.ph + p.life * 9));
+          g.fillStyle = p.col; g.fillRect(p.x - 2.5, p.y - 3.5 * fl, 5, 1 + 7 * fl);
+        } else if (p.spark){
           g.strokeStyle = p.col; g.lineWidth = 1.5;
           g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x - p.vx * 0.025, p.y - p.vy * 0.025); g.stroke();
         } else {
@@ -872,22 +998,28 @@ OE.register({
       const u = clamp(Math.min(w / 720, h / 420), 0.6, 1.3), m = Math.max(8, 12 * u);
       const fsL = Math.max(9, 10 * u), fsV = Math.max(13, 17 * u), fsT = Math.max(24, 38 * u);
       g.textBaseline = "alphabetic"; g.globalAlpha = 1;
-      // links: Strecke, Überholt · rechts: Rekord
-      txt("STRECKE", m, m + fsL, fsL, C.dim);
-      txt(`${(dist / KM).toFixed(2)} km`, m, m + fsL + fsV + 2, fsV, C.bright, "left", 600, 6);
-      txt("ÜBERHOLT", m, m + fsL * 2 + fsV + 10, fsL, C.dim);
-      txt(String(passed), m, m + fsL * 2 + fsV * 2 + 12, fsV, C.bright, "left", 600, 6);
-      txt("REKORD", w - m, m + fsL, fsL, C.dim, "right");
-      txt(`${best.toFixed(2)} km`, w - m, m + fsL + fsV + 2, fsV, C.amber, "right", 600, 6);
-      // Mitte: Restzeit und Weg zum nächsten Checkpoint
+      // links: Runde, Weg bis Ziel, Überholt · rechts: Stage, Fahrzeit, Bestzeit
+      const row = n => m + fsL + n * (fsL + fsV + 10);
+      txt("RUNDE", m, row(0), fsL, C.dim);
+      txt(`${lapNo()}/${ST.laps}`, m, row(0) + fsV + 2, fsV, C.bright, "left", 600, 6);
+      txt("ZIEL IN", m, row(1), fsL, C.dim);
+      txt(`${(Math.max(0, goal - dist) / KM).toFixed(2)} km`, m, row(1) + fsV + 2, fsV, C.bright, "left", 600, 6);
+      txt("ÜBERHOLT", m, row(2), fsL, C.dim);
+      txt(String(passed), m, row(2) + fsV + 2, fsV, C.bright, "left", 600, 6);
+      txt(ST.name, w - m, row(0), fsL, C.dim, "right");
+      txt(fmtT(raceT), w - m, row(0) + fsV + 2, fsV, C.bright, "right", 600, 6);
+      txt("BESTZEIT", w - m, row(1), fsL, C.dim, "right");
+      txt(best[stage] ? fmtT(best[stage]) : "–", w - m, row(1) + fsV + 2, fsV, C.amber, "right", 600, 6);
+      // Mitte: Restzeit und Fortschritt bis zum Ziel (Striche = Checkpoints, Schachbrett = Ziel)
       const low = time < 10, blink = time < 5 && (clock * 4 | 0) & 1;
       txt("ZEIT", w / 2, m + fsL, fsL, C.dim, "center");
       txt(String(Math.ceil(time)), w / 2, m + fsL + fsT, fsT, blink ? C.red : low ? C.amber : C.bright, "center", 700, 10);
-      const bw = Math.max(70, 110 * u), by = m + fsL + fsT + 8;
-      const prog = dist < SEG * 30 ? 0 : clamp(1 - nextCp[segAt(pos + PLAYER_Z).i] / cpStep, 0, 1);
-      g.fillStyle = "rgba(51,255,102,.18)"; g.fillRect(w / 2 - bw / 2, by, bw, 4);
-      g.fillStyle = C.amber; g.fillRect(w / 2 - bw / 2, by, bw * prog, 4);
-      txt("CP", w / 2 - bw / 2 - 5, by + 5, fsL * 0.9, C.dim, "right");
+      const bw = Math.max(90, 150 * u), by = m + fsL + fsT + 8, bx = w / 2 - bw / 2;
+      g.fillStyle = "rgba(51,255,102,.18)"; g.fillRect(bx, by, bw, 4);
+      g.fillStyle = C.amber; g.fillRect(bx, by, bw * clamp(dist / goal, 0, 1), 4);
+      g.fillStyle = C.pale;
+      for (let k = 1; k < ST.laps * nCp; k++) g.fillRect(bx + bw * (startGap + k * LEN / nCp) / goal - 0.5, by - 2, 1, 8);
+      for (let c = 0; c < 3; c++) for (let r = 0; r < 3; r++){ g.fillStyle = (c + r) & 1 ? "#000" : "#e8ffee"; g.fillRect(bx + bw + 3 + c * 3, by - 3 + r * 3, 3, 3); }
 
       // Drehzahlmesser unten rechts: LED-Bogen, Tempo digital, Gang
       const Rr = Math.max(36, 56 * u), cx = w - m - Rr, cy = h - m - Rr * 0.8;
@@ -909,6 +1041,10 @@ OE.register({
       const big = Math.max(34, Math.min(w, h) * 0.2);
       if (state === "count" || (state === "paused" && pausedFrom === "count")){
         const n = Math.max(1, Math.ceil(countT)), f = countT - Math.floor(countT);
+        const fs = Math.max(16, Math.min(w / 18, 32)), ly2 = h * 0.62;   // Stage-Name auf dunklem Band unter der Zahl
+        g.fillStyle = "rgba(0,0,0,.6)"; g.fillRect(0, ly2 - fs * 1.1, w, fs * 2.1);
+        txt(ST.name, w / 2, ly2, fs, C.bright, "center", 700, 12);
+        txt(`${ST.sub} · ${ST.laps} RUNDEN`, w / 2, ly2 + fs * 0.8, fs * 0.6, C.pale, "center", 600);
         g.globalAlpha = 0.35 + 0.65 * f;
         txt(String(n), w / 2, h * 0.42, big * (1 + 0.45 * f), C.amber, "center", 700, 22);
       } else if (goT > 0){
@@ -918,8 +1054,24 @@ OE.register({
       if (checkFlash > 0 && (checkFlash < 1.2 || (clock * 8 | 0) & 1)){
         const fs = Math.max(18, Math.min(w / 16, 40));
         g.globalAlpha = Math.min(1, checkFlash * 1.5);
-        txt("CHECKPOINT", w / 2, h * 0.3, fs, C.amber, "center", 700, 16);
-        txt(`+${BONUS} s`, w / 2, h * 0.3 + fs * 1.1, fs * 0.8, C.bright, "center", 600, 10);
+        txt(cpText, w / 2, h * 0.3, fs, C.amber, "center", 700, 16);
+        txt(`+${ST.bonus} s`, w / 2, h * 0.3 + fs * 1.1, fs * 0.8, C.bright, "center", 600, 10);
+      }
+      if (state === "finish"){   // Zieleinlauf: ZIEL! wächst ein, Fahnen wehen, Zeit darunter
+        const t = clock - finAt, fs = Math.max(34, Math.min(w / 7, h * 0.2)) * Math.min(1, 0.4 + t * 2.5);
+        g.globalAlpha = Math.min(1, t * 3);
+        txt("ZIEL!", w / 2, h * 0.36, fs, C.bright, "center", 700, 24);
+        txt(fmtT(res.t), w / 2, h * 0.36 + fs * 0.7, fs * 0.45, C.amber, "center", 700, 12);
+        const fw = fs * 0.9, fh = fs * 0.6, cell = fw / 6;
+        for (const sd of [-1, 1]){
+          const x0 = w / 2 + sd * (fs * 1.55) - (sd < 0 ? fw : 0), y0 = h * 0.36 - fs * 0.9;
+          g.fillStyle = C.dim; g.fillRect(sd < 0 ? x0 + fw : x0 - 2, y0, 2, fh * 2.2);
+          for (let c = 0; c < 6; c++) for (let r = 0; r < 4; r++){
+            const wv = Math.sin(clock * 8 + c * 0.8 * sd) * cell * 0.35;
+            g.fillStyle = (c + r) & 1 ? "#000" : "#e8ffee";
+            g.fillRect(x0 + c * cell, y0 + r * (fh / 4) + wv, cell + 0.5, fh / 4 + 0.5);
+          }
+        }
       }
       g.globalAlpha = 1;
     }
@@ -951,6 +1103,14 @@ OE.register({
       const rough = Math.abs(px) > 1 ? 1 : Math.abs(px) > 1 - CAR ? 0.5 : 0;
       const bounce = state === "running" ? (Math.sin(clock * 47) * rough * 0.035 + Math.sin(clock * 23) * 0.006 * ratio) * s : 0;
       const roll = steerVis * 0.06 + pSeg.curve * ratio * 0.008;
+      if (ST.night){   // Scheinwerferkegel auf der Fahrbahn
+        const cx = w / 2 + steerVis * s * 0.1, y0 = h - s * 0.2, y1 = HZ + (h - HZ) * 0.35;
+        const hg = g.createLinearGradient(0, y0, 0, y1);
+        hg.addColorStop(0, "rgba(200,255,212,.16)"); hg.addColorStop(1, "rgba(200,255,212,0)");
+        g.globalCompositeOperation = "lighter"; g.fillStyle = hg; g.beginPath();
+        quad(cx - s * 0.7, y0, cx + s * 0.7, y0, cx + s * 1.6 + steerVis * s * 0.6, y1, cx - s * 1.6 + steerVis * s * 0.6, y1); g.fill();
+        g.globalCompositeOperation = "source-over";
+      }
       drawCar(w / 2 + steerVis * s * 0.1, h - Math.max(8, h * 0.03) + bounce, s, 1, PLAYER_LOOK,
         { brake: braking || state !== "running", roll, yaw: -steerVis * 0.08, mine: true, gas: gasOn && ratio < 0.97 && (state === "running" || state === "count") });
       drawParts();
@@ -990,10 +1150,24 @@ OE.register({
     }
 
     /* ---------- Ablauf ---------- */
-    function startRace(){
-      reset(); state = "count"; countT = 3; overlay(null);
-      audioInit(); sfx(440, 120, "square", 0.05);
+    function setStage(n){
+      const night = ST.night;
+      stage = n; ST = STAGES[n];
+      build(); palette();
+      if (night !== ST.night) size(true);   // Himmel, Sonne/Mond neu malen
     }
+    function startRace(n = stage){
+      setStage(n); reset(); state = "count"; countT = 3; overlay(null);
+      audioInit(); sfx(440, 120, "square", 0.05);
+      if (n) ctx.log("INFO", "race: STAGE 2 · NIGHT CITY");
+    }
+    // Knöpfe und ENTER: next = Stage 2, again = Stage wiederholen, s1 = von vorn
+    function act(a){
+      if (!canRestart()) return;
+      if (a === "next" && !(state === "done" && stage === 0)) a = "again";
+      startRace(a === "next" ? 1 : a === "s1" ? 0 : stage);
+    }
+    const enterAct = () => state === "done" ? (stage === 0 ? "next" : "s1") : state === "ready" ? "s1" : "again";
     function pause(){
       if (state !== "running" && state !== "count") return;
       pausedFrom = state; state = "paused";
@@ -1003,7 +1177,7 @@ OE.register({
       if (state !== "paused") return;
       state = pausedFrom; overlay(null); audioInit();
     }
-    const canRestart = () => state === "ready" || (state === "over" && clock - overAt > 0.8);
+    const canRestart = () => state === "ready" || ((state === "over" || state === "done") && clock - overAt > 0.8);
 
     // Bildrate beobachten: wenn es dauerhaft ruckelt, auf Sparmodus schalten
     let ft = 16, slow = 0;
@@ -1018,8 +1192,12 @@ OE.register({
       const dt = Math.min(ms, 50) / 1000;
       if (state !== "paused"){
         clock += dt;
-        if (state === "running") update(dt);
+        if (state === "running" || state === "finish") update(dt);
         else if (state === "count") countdown(dt);
+        if (state === "finish"){
+          if (clock - finAt < 1.6 && Math.random() < 0.6) confetti(2);
+          if (clock - finAt > 2.8) results();
+        }
         fx(dt);
       }
       audioTick(dt);
@@ -1042,12 +1220,20 @@ OE.register({
       { label: "◀", key: "ArrowLeft" }, { label: "▶", key: "ArrowRight" },
       { label: "▼", key: "ArrowDown", aria: "Bremse" }, { label: "HUP", key: "h", aria: "Hupe" }, { label: "⏯", key: "p", aria: "Pause" },
     ]);
-    body.addEventListener("pointerdown", () => { if (canRestart()) startRace(); else if (state === "paused") resume(); });
+    body.addEventListener("pointerdown", e => {
+      const b = e.target.closest("[data-act]");
+      if (b){ e.preventDefault(); act(b.dataset.act); return; }
+      if (state === "ready") act("s1");
+      else if (state === "over" || state === "done") act(enterAct());
+      else if (state === "paused") resume();
+    });
+    build(); palette();
     reset();
     updBar();
     const sub = `color:${C.dim}`;
     overlay(`<div class="big" style="font-size:30px;letter-spacing:.5em;color:${C.bright};text-shadow:0 0 14px ${C.green}">RACE</div>
-      <div style="color:${C.amber}">überholen · Checkpoint = +${BONUS} s</div>
+      <div style="color:${C.amber}">2 Runden bis ins Ziel · Checkpoint = +${ST.bonus} s</div>
+      <div style="color:${C.pale}">danach STAGE 2 bei Nacht</div>
       <div style="${sub}">${ctx.touch ? "Gas geht von allein · ▼ bremst" : "← → lenken · ↑ gas · ↓ bremse"}</div>
       <div style="${sub}">${ctx.touch ? "◀ ▶ lenken · HUP hupt · ⏯ pause" : "H hupe · P pause · M ton · Q exit"}</div>
       <div style="color:#7ab8ff">Polizei ${police ? "ist an" : "zuschalten"}: ${ctx.touch ? "oben auf „polizei“ tippen" : "Taste C"}</div>
@@ -1062,8 +1248,10 @@ OE.register({
       },
       key(e){
         const k = e.key;
-        if (k.startsWith("Arrow")){ if (k === "ArrowUp" && state === "ready") startRace(); return true; }
-        if (k === "Enter" || k === " "){ if (canRestart()) startRace(); else if (state === "paused") resume(); return true; }
+        if (k.startsWith("Arrow")){ if (k === "ArrowUp" && state === "ready") startRace(0); return true; }
+        if (k === "Enter" || k === " "){ if (canRestart()) act(enterAct()); else if (state === "paused") resume(); return true; }
+        if (k === "r" || k === "R"){ act(state === "done" && stage === 0 ? "again" : "s1"); return true; }
+        if (k === "2"){ if (state === "done" && stage === 1) act("again"); return true; }
         if (k === "p" || k === "P"){ if (state === "paused") resume(); else pause(); return true; }
         if (k === "m" || k === "M"){ toggleMute(); return true; }
         if (k === "c" || k === "C"){ togglePolice(); return true; }
