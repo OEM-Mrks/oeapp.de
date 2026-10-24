@@ -579,6 +579,97 @@ body.app-on #app{ display:flex; flex-direction:column; }
 }
 .app-overlay .ssp-title{ font-size:clamp(22px, 6vw, 34px); line-height:1.25; margin-bottom:8px; text-shadow:0 0 12px rgba(166,255,184,.6); }
 
+/* dilemma: Gefangenendilemma als Verhörprotokoll */
+.pd{ position:absolute; inset:0; display:flex; flex-direction:column; min-height:0; }
+.pd-game, .pd-tour{ flex:1; min-height:0; display:flex; flex-direction:column; }
+.pd-game[hidden], .pd-tour[hidden]{ display:none; }
+.pd-head{
+  border:1px solid rgba(51,255,102,.35); padding:6px 10px; margin-bottom:8px;
+  font-variant-numeric:tabular-nums;
+}
+.pd-file{ color:var(--amber); font-size:12px; letter-spacing:.12em; margin-bottom:4px; }
+.pd-row{ display:grid; grid-template-columns:min(10em, 30%) 1fr auto; gap:10px; align-items:center; line-height:1.5; }
+.pd-who{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pd-line{ display:flex; flex-wrap:wrap; gap:3px; align-items:center; min-width:0; }
+.pd-line i, .pd-strip i, .pd-legend i{ font-style:normal; }
+/* Zellen als feste Kästchen, unabhängig von der Schrift */
+.pd-c, .pd-d{ display:inline-block; width:.8em; text-align:center; line-height:1; }
+.pd-c::before{ content:""; display:inline-block; width:.62em; height:.62em; background:currentColor; vertical-align:middle; }
+.pd-strip{ display:flex; gap:1px; }
+.pd-y{ color:var(--green-dim); }
+.pd-y b{ color:var(--green-bright); font-weight:500; display:inline-block; min-width:2.2em; text-align:right; }
+.pd-legend{ font-size:11px; margin-top:2px; }
+.pd .you{ color:var(--green-bright); }
+.pd .him{ color:var(--amber); }
+.pd-c{ color:var(--green-bright); text-shadow:0 0 6px rgba(51,255,102,.7); }
+.pd-d{ color:var(--red); text-shadow:0 0 6px rgba(255,90,90,.6); }
+.pd-q{ font-style:normal; color:var(--green-bright); animation:blink 1s steps(2) infinite; }
+
+.pd-log{ flex:1; min-height:0; overflow:auto; white-space:pre-wrap; word-break:break-word; line-height:1.45; }
+.pd-log .ok{ color:var(--green-bright); }
+.pd-log .warn, .pd .warn{ color:var(--amber); }
+.pd-log .err{ color:var(--red); }
+.pd-log b{ font-weight:500; }
+.pd-hl{ color:var(--amber); letter-spacing:.08em; }
+.pd-pre{ white-space:pre; overflow-x:auto; color:var(--green-bright); }
+.pd-case{ color:var(--amber); margin-top:2px; }
+.pd-cop{ color:var(--green); }
+.pd-knock{ color:var(--green); }
+.pd-box{
+  border:1px dashed rgba(51,255,102,.4); padding:6px 10px; margin:8px 0;
+  white-space:pre-wrap; overflow-x:auto;
+}
+.pd-reveal{ border-style:solid; border-color:var(--amber); }
+.pd-big{ font-size:18px; letter-spacing:.14em; color:var(--green-bright); }
+
+/* Touch-/Klick-Tasten: immer sichtbar, beim Entscheiden groß */
+.pd-pad, .touch .pd-pad{ display:flex; }
+.pd-pad button{ font-size:14px; padding:0 14px; }
+.pd-pad.pd-choose button{ flex:1 1 0; height:58px; font-size:16px; letter-spacing:.08em; max-width:260px; }
+.pd-pad.pd-choose button:last-child{ flex:0 0 52px; }
+.pd-pad .pd-bs{ border-color:var(--green-bright); color:var(--green-bright); }
+.pd-pad .pd-bv{ border-color:var(--red); color:var(--red); }
+.pd-pad .pd-bv:active{ background:var(--red); color:#000; }
+
+/* Regeln */
+.pd-ov{ z-index:5; cursor:pointer; background:#000; justify-content:flex-start; }
+.pd-rules{ text-align:left; white-space:normal; overflow:auto; max-width:640px; max-height:100%; padding:10px; line-height:1.45; }
+.pd-rules p{ margin:0 0 10px; }
+.pd-mx{ margin:0 0 12px; font:inherit; white-space:pre; overflow-x:auto; color:var(--green-bright); }
+.pd-rules .ok{ color:var(--green-bright); } .pd-rules .err{ color:var(--red); } .pd-rules .warn{ color:var(--amber); }
+
+/* Turnier */
+.pd-tour{ overflow:auto; }
+.pd-now{ min-height:4.4em; margin:4px 0 8px; font-variant-numeric:tabular-nums; }
+.pd-strip{ font-size:12px; white-space:nowrap; overflow:hidden; }
+.pd-tr{ display:grid; grid-template-columns:2em minmax(0, 1fr) 5.5em minmax(60px, 30%); gap:8px; padding:2px 4px; align-items:center; font-variant-numeric:tabular-nums; }
+.pd-tr > span:nth-child(2){ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pd-th{ color:var(--green-dim); border-bottom:1px dashed rgba(51,255,102,.25); }
+.pd-tr.you{ color:var(--amber); }
+.pd-tr.top{ background:var(--green); color:#000; text-shadow:none; }
+.pd-tr.top .dim{ color:#000; }
+.pd-bar{ height:8px; background:rgba(51,255,102,.12); }
+.pd-bar i{ display:block; height:100%; background:var(--green); box-shadow:0 0 6px var(--green); }
+.pd-tr.top .pd-bar i{ background:#000; box-shadow:none; }
+.pd-note{ margin-top:10px; white-space:pre-wrap; line-height:1.45; }
+
+/* Handy: Core macht Spieltasten 22px groß – für Wörter zu groß */
+.touch .pd-pad button{ font-size:15px; padding:0 4px; }
+.touch .pd-pad.pd-choose button{ font-size:17px; height:66px; letter-spacing:.04em; }
+.touch .pd-pad.pd-choose button:last-child{ flex:0 0 52px; }
+.touch .pd-pad.pd-tourpad{ flex-wrap:wrap; }
+.touch .pd-pad.pd-tourpad button{ flex:1 1 28%; height:44px; font-size:14px; }
+
+@media (max-width: 600px){
+  .pd-head{ padding:4px 6px; }
+  .pd-line{ gap:2px; }
+  .pd-tr{ grid-template-columns:1.6em minmax(0, 1fr) 4.2em; }
+  .pd-tr > span:nth-child(2) .dim{ display:none; }
+  .pd-rules{ font-size:13px; }
+  .pd-mx{ font-size:12px; }
+  .pd-hide{ display:none; }
+}
+
 /* exit: Bild zerfällt, danach nur noch der Cursor */
 .shatter{ position:fixed; inset:0; z-index:45; pointer-events:none; overflow:hidden; background:#000; }
 .shard{ position:absolute; overflow:hidden; will-change:transform; }
