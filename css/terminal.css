@@ -404,6 +404,207 @@ body.app-on #app{ display:flex; flex-direction:column; }
 @keyframes atm-inv{ 50%{ background:var(--green-bright); color:#000; text-shadow:none; } }
 .atm-hint{ text-align:center; font-size:12px; min-height:1.4em; padding-top:6px; }
 
+/* exit: Bild zerfällt, danach nur noch der Cursor */
+.shatter{ position:fixed; inset:0; z-index:45; pointer-events:none; overflow:hidden; background:#000; }
+.shard{ position:absolute; overflow:hidden; will-change:transform; }
+/* in den Kopien nichts animieren — sonst muss jede Kachel jedes Bild neu gemalt werden */
+.shatter *{ animation:none !important; transition:none !important; }
+.shard-inner{ position:absolute; left:0; top:0; }
+.halt{ position:fixed; inset:0; z-index:45; background:#000; padding:14px 16px; }
+.halt .cursor{ width:10px; height:18px; }
+
+/* =============================================================
+   video: DOS-Kassensystem (Blau wie 1994, VGA-Farben)
+   ============================================================= */
+.dos{
+  --d-bg:#0000aa; --d-fg:#c0c0c0; --d-hi:#ffffff; --d-cy:#00aaaa; --d-ye:#ffff55; --d-re:#ff5555; --d-gr:#55ff55;
+  flex:1; min-height:0; display:flex; flex-direction:column;
+  background:var(--d-bg); color:var(--d-fg); text-shadow:0 0 1px rgba(255,255,255,.25);
+  font-size:13px; line-height:1.35; border:2px solid #000; box-shadow:0 0 0 1px var(--d-cy);
+}
+.dos b{ color:var(--d-hi); font-weight:600; }
+.dos .dim{ color:#7f86c7; }
+.dos .ok{ color:var(--d-gr); }
+.dos .warn{ color:var(--d-ye); }
+.dos .err{ color:var(--d-re); }
+.dos-head{ display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; background:var(--d-cy); color:#000; padding:2px 10px; font-weight:600; text-shadow:none; }
+.dos-main{ flex:1; min-height:0; overflow:auto; padding:12px; }
+.dos-msg{ background:#000080; color:var(--d-ye); padding:2px 10px; border-top:1px solid var(--d-cy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dos-msg.ok{ color:var(--d-gr); } .dos-msg.err{ color:var(--d-re); } .dos-msg.warn{ color:var(--d-ye); }
+.dos-keys{ display:flex; flex-wrap:wrap; background:#000; }
+.dos-key{ font:inherit; font-size:12px; background:#000; color:var(--d-cy); border:0; padding:3px 8px; cursor:pointer; text-shadow:none; }
+.dos-key b{ color:var(--d-hi); margin-right:4px; }
+.dos-key:hover{ background:var(--d-cy); color:#000; }
+.dos-key.off{ opacity:.4; cursor:default; }
+.dos-box{ border:3px double var(--d-fg); padding:10px 12px 12px; margin:6px 0 14px; position:relative; min-width:0; }
+.dos-box-t{ position:absolute; top:-0.8em; left:12px; background:var(--d-bg); color:var(--d-hi); padding:0 6px; font-weight:600; }
+.dos-box.narrow{ max-width:560px; }
+.dos-cols{ display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start; }
+.dos-cols > .dos-box{ flex:1 1 360px; }
+.dos-cols > .dos-box.dos-side{ flex:0 1 auto; }
+.dos-f{ display:flex; align-items:center; gap:10px; margin:6px 0; }
+.dos-f > span{ min-width:150px; color:var(--d-hi); }
+.dos-in{
+  font:inherit; color:#000; background:var(--d-cy); border:0; outline:0; padding:1px 6px;
+  flex:1; max-width:340px; min-width:0; text-shadow:none; caret-color:#000;
+}
+.dos-in:focus{ background:#55ffff; }
+.dos-in::placeholder{ color:#005f5f; }
+.dos-hint{ color:#7f86c7; font-size:12px; margin-top:8px; }
+.dos-pre{ margin:6px 0 0; white-space:pre; overflow-x:auto; font:inherit; }
+.dos-big{ font-size:20px; color:var(--d-ye); }
+.dos-th{ color:var(--d-hi); text-decoration:underline; }
+.dos-row{ cursor:pointer; }
+.dos-row:hover{ background:var(--d-cy); color:#000; }
+.dos-sum{ color:var(--d-hi); }
+.dos-menu .dos-item{ padding:1px 6px; cursor:pointer; white-space:pre; }
+.dos-menu .dos-item b{ color:var(--d-ye); margin-right:6px; }
+.dos-menu .dos-item.sel, .dos-menu .dos-item:hover{ background:var(--d-fg); color:#000; }
+.dos-menu .dos-item.sel b, .dos-menu .dos-item:hover b, .dos-menu .dos-item.sel .dim{ color:#000; }
+.dos-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.dos-btn{ font:inherit; background:var(--d-fg); color:#000; border:0; padding:2px 10px; cursor:pointer; box-shadow:3px 3px 0 #000; text-shadow:none; }
+.dos-btn b{ color:#aa0000; }
+.dos-btn:active{ transform:translate(2px,2px); box-shadow:1px 1px 0 #000; }
+.dos-center{ display:flex; flex-direction:column; align-items:center; gap:4px; }
+.dos-logo{ margin:0; color:var(--d-cy); line-height:1.15; }
+.dos-title{ font-size:28px; font-weight:600; letter-spacing:.3em; color:var(--d-ye); }
+.dos-sub{ color:#7f86c7; font-size:12px; margin-bottom:12px; text-align:center; }
+.dos-card{ margin:0; color:var(--d-ye); line-height:1.2; }
+.drawer-wrap{ overflow:hidden; padding:10px 0 30px; }
+.drawer{ margin:0; color:var(--d-fg); transition:transform .25s cubic-bezier(.2,1.6,.4,1); }
+.drawer.open{ transform:translateY(22px); color:var(--d-ye); }
+.receipt-wrap{ display:flex; flex-direction:column; align-items:center; }
+.receipt{
+  margin:0; background:#f4f1e6; color:#222; text-shadow:none; padding:14px 16px; width:max-content; max-width:100%;
+  font-size:12px; line-height:1.3; white-space:pre; overflow:auto; max-height:60vh;
+  box-shadow:0 6px 18px rgba(0,0,0,.6); border-top:6px dashed #f4f1e6;
+}
+@media (max-width: 600px){
+  .dos{ font-size:11px; }
+  .dos-f{ flex-direction:column; align-items:stretch; gap:2px; }
+  .dos-f > span{ min-width:0; }
+  .dos-in{ max-width:none; font-size:16px; }   /* 16px: iOS zoomt sonst beim Fokussieren */
+  .dos-title{ font-size:20px; }
+  .dos-logo{ font-size:9px; }
+  .dos-main{ padding:8px; }
+}
+
+/* =============================================================
+   Touch-Geräte (Handy/Tablet), Klasse .touch setzt core.js
+   ============================================================= */
+html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+.touch{
+  --botbar-h: 42px;
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;          /* kein Doppeltipp-Zoom */
+  overscroll-behavior:none;
+}
+.touch input, .touch textarea{ -webkit-user-select:text; user-select:text; }
+/* unter 16px zoomt iOS beim Antippen eines Eingabefelds hinein */
+.touch .cli-input, .touch .dos-in{ font-size:16px; }
+
+/* Layout folgt dem sichtbaren Bereich (Bildschirmtastatur), Werte setzt core.js */
+.vv .topbar{ top:var(--vvt, 0px); }
+.vv .stage{
+  top:calc(var(--vvt, 0px) + var(--topbar-h) + env(safe-area-inset-top, 0px));
+  bottom:auto;
+  height:calc(var(--vvh, 100%) - var(--topbar-h) - env(safe-area-inset-top, 0px) - var(--botbar-h) - env(safe-area-inset-bottom, 0px));
+}
+.vv .botbar{ bottom:auto; top:calc(var(--vvt, 0px) + var(--vvh, 100%) - var(--botbar-h) - env(safe-area-inset-bottom, 0px)); }
+/* Tastatur offen: Fußleiste weg, die Fläche gehört der Eingabe */
+.vv.kbd .botbar{ display:none; }
+.vv.kbd .stage{ height:calc(var(--vvh, 100%) - var(--topbar-h) - env(safe-area-inset-top, 0px)); }
+
+/* Fußleiste: große Tippflächen */
+.touch .botbar{ font-size:13px; }
+.touch .botbar .seg{ padding:0 16px; }
+.touch .botbar .seg[data-go]{ min-width:84px; justify-content:center; }
+
+/* Ohne Flackern und Scanline-Überblendung: kostet auf dem Handy pro Bild die ganze Seite */
+.touch.app-on{ animation:none; }
+.touch.app-on::before{ display:none; }
+
+/* App-Auswahl: Zeilen groß genug für Finger */
+.touch .menu{ -webkit-overflow-scrolling:touch; }
+.touch .menu .item{ padding:9px 6px; align-items:center; }
+.touch .menu .item:hover:not(.sel){ background:none; color:inherit; text-shadow:inherit; }
+.touch .menu .item:hover:not(.sel) .name{ color:var(--green-bright); }
+.touch .menu .item:hover:not(.sel) .desc{ color:var(--green-dim); }
+.touch .menu .hint{ display:none; }
+
+/* Spieltasten: volle Breite, groß, mehrere Finger gleichzeitig (Lenken + Bremsen) */
+.touch .pad{
+  flex-wrap:nowrap; gap:6px; padding-top:8px;
+  width:100%; max-width:560px; margin:0 auto;
+}
+.touch .pad button{
+  flex:1 1 0; min-width:0; height:58px; font-size:22px;
+  touch-action:none; border-radius:4px;
+}
+/* Tastenkürzel-Hinweise in Statuszeilen helfen auf dem Handy nicht */
+.touch .app-bar{ gap:10px; font-size:11px; }
+.touch .app-bar .right{ display:none; }
+
+/* Querformat auf dem Handy: Tasten seitlich wäre schöner, flach halten reicht */
+@media (pointer:coarse) and (max-height:500px){
+  .touch .pad button{ height:44px; }
+  .touch .app-bar{ display:none; }
+}
+.vv.kbd .side{ display:none; }
+.vv.kbd .stage{ grid-template-rows:1fr; }
+.touch .pad button{ white-space:nowrap; overflow:hidden; }
+
+/* Tipp-Menü der Text-Apps (fsociety, swan): Befehle als Knöpfe wie bei Telegram */
+.tty-chips{ display:flex; flex-wrap:wrap; gap:6px; padding-top:8px; }
+.tty-chips[hidden]{ display:none; }
+.tty-chips-head{ width:100%; font-size:11px; color:var(--green-dim); letter-spacing:.05em; }
+.tty-chips button{
+  font:inherit; font-size:12px; background:#000; color:var(--green-bright); text-shadow:inherit;
+  border:1px solid rgba(51,255,102,.45); border-radius:6px; padding:4px 10px; cursor:pointer;
+}
+.tty-chips button:hover:not(:disabled){ background:rgba(51,255,102,.12); }
+.tty-chips button:active:not(:disabled){ background:var(--green); color:#000; text-shadow:none; }
+.tty-chips button.aux{ color:var(--green-dim); border-style:dashed; }
+.tty-chips button:disabled{ opacity:.35; cursor:default; }
+.touch .tty-chips button{ flex:1 1 30%; min-height:44px; padding:6px 4px; font-size:14px; }
+.tty-touch .tty-in{ display:none; }
+.tty-touch.kb .tty-in{ display:flex; }
+
+/* video auf dem Handy: Listenzeilen und Knöpfe groß genug zum Antippen */
+.touch .dos-table{ line-height:2.3; }
+.touch .dos-row{ display:inline-block; width:100%; }
+.touch .dos-btn{ padding:8px 12px; }
+.touch .dos-key{ padding:8px 9px; }
+.touch .dos-menu .dos-item{ padding:8px 6px; }
+.dos-actions .dos-btn{ cursor:pointer; }
+
+/* life: Erklärung mit Computerstimme, Text läuft oben mit */
+.life-say{
+  position:absolute; left:8px; right:8px; top:8px; z-index:2;
+  background:rgba(0,0,0,.86); border:1px solid rgba(51,255,102,.5); padding:8px 12px 10px;
+  box-shadow:0 0 18px rgba(51,255,102,.15); cursor:pointer;
+}
+.life-say[hidden]{ display:none; }
+.life-say-h{ font-size:11px; color:var(--green-dim); letter-spacing:.08em; margin-bottom:4px; }
+.life-say-h .dim{ color:var(--green-dim); opacity:.7; }
+.life-say-t{ color:var(--green-bright); font-size:15px; line-height:1.45; min-height:4.35em; }
+@media (max-width:480px){ .life-say-t{ font-size:14px; } }
+
+/* matrix: grobe Pixel, leicht weich und leuchtend wie auf einem alten Monitor */
+.matrix-cv{ image-rendering:pixelated; filter:blur(.45px) brightness(1.2); }
+
+/* Musik-Schalter in der Fußleiste */
+.botbar .music-seg{ cursor:pointer; }
+.botbar .music-seg b{ color:var(--green-dim); font-weight:500; }
+.botbar .music-seg.on b{ color:var(--green-bright); }
+.botbar .music-seg:hover{ color:var(--green-bright); }
+
+/* =============================================================
+   App-spezifisch (nach den allgemeinen Touch-Regeln, damit sie greifen)
+   ============================================================= */
+
 /* Tic-Tac-Toe (js/apps/ttt.js) — Feldgröße und Schrift setzt die App per JS */
 .ttt-wrap{ display:flex; flex-direction:column; align-items:center; gap:10px; }
 .ttt-board{
@@ -695,199 +896,82 @@ body.app-on #app{ display:flex; flex-direction:column; }
   .touch .pad.fx-pad{ grid-template-rows:38px 38px; }
 }
 
-/* exit: Bild zerfällt, danach nur noch der Cursor */
-.shatter{ position:fixed; inset:0; z-index:45; pointer-events:none; overflow:hidden; background:#000; }
-.shard{ position:absolute; overflow:hidden; will-change:transform; }
-/* in den Kopien nichts animieren — sonst muss jede Kachel jedes Bild neu gemalt werden */
-.shatter *{ animation:none !important; transition:none !important; }
-.shard-inner{ position:absolute; left:0; top:0; }
-.halt{ position:fixed; inset:0; z-index:45; background:#000; padding:14px 16px; }
-.halt .cursor{ width:10px; height:18px; }
+/* pille: Rot/Blau-Dilemma – Weltkarte aus Punkten, Auszählung, Protokoll */
+.pl{ position:absolute; inset:0; display:flex; flex-direction:column; min-height:0; --pl-blue:#4aa8ff; }
+.pl-world{ position:relative; flex:0 0 42%; min-height:120px; border:1px solid rgba(51,255,102,.35); overflow:hidden; }
+.pl-world canvas{ position:absolute; inset:0; display:block; }
+.pl-tag{
+  position:absolute; left:6px; top:4px; font-size:11px; color:var(--green-dim);
+  background:rgba(0,0,0,.7); padding:0 4px; letter-spacing:.06em; pointer-events:none;
+}
+.pl-stamp{
+  position:absolute; left:50%; top:80%; transform:translate(-50%, -50%) rotate(-4deg);
+  font-size:clamp(20px, 5vw, 38px); letter-spacing:.16em; padding:4px 14px; white-space:nowrap;
+  border:3px solid currentColor; background:rgba(0,0,0,.78); pointer-events:none;
+  animation:pl-in .35s ease-out;
+}
+.pl-stamp[hidden]{ display:none; }
+.pl-stamp.ok{ color:var(--green-bright); text-shadow:0 0 14px rgba(166,255,184,.8); }
+.pl-stamp.err{ color:var(--red); text-shadow:0 0 14px rgba(255,90,90,.8); }
+@keyframes pl-in{ from{ transform:translate(-50%, -50%) rotate(-4deg) scale(1.8); opacity:0; } }
 
-/* =============================================================
-   video: DOS-Kassensystem (Blau wie 1994, VGA-Farben)
-   ============================================================= */
-.dos{
-  --d-bg:#0000aa; --d-fg:#c0c0c0; --d-hi:#ffffff; --d-cy:#00aaaa; --d-ye:#ffff55; --d-re:#ff5555; --d-gr:#55ff55;
-  flex:1; min-height:0; display:flex; flex-direction:column;
-  background:var(--d-bg); color:var(--d-fg); text-shadow:0 0 1px rgba(255,255,255,.25);
-  font-size:13px; line-height:1.35; border:2px solid #000; box-shadow:0 0 0 1px var(--d-cy);
-}
-.dos b{ color:var(--d-hi); font-weight:600; }
-.dos .dim{ color:#7f86c7; }
-.dos .ok{ color:var(--d-gr); }
-.dos .warn{ color:var(--d-ye); }
-.dos .err{ color:var(--d-re); }
-.dos-head{ display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; background:var(--d-cy); color:#000; padding:2px 10px; font-weight:600; text-shadow:none; }
-.dos-main{ flex:1; min-height:0; overflow:auto; padding:12px; }
-.dos-msg{ background:#000080; color:var(--d-ye); padding:2px 10px; border-top:1px solid var(--d-cy); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.dos-msg.ok{ color:var(--d-gr); } .dos-msg.err{ color:var(--d-re); } .dos-msg.warn{ color:var(--d-ye); }
-.dos-keys{ display:flex; flex-wrap:wrap; background:#000; }
-.dos-key{ font:inherit; font-size:12px; background:#000; color:var(--d-cy); border:0; padding:3px 8px; cursor:pointer; text-shadow:none; }
-.dos-key b{ color:var(--d-hi); margin-right:4px; }
-.dos-key:hover{ background:var(--d-cy); color:#000; }
-.dos-key.off{ opacity:.4; cursor:default; }
-.dos-box{ border:3px double var(--d-fg); padding:10px 12px 12px; margin:6px 0 14px; position:relative; min-width:0; }
-.dos-box-t{ position:absolute; top:-0.8em; left:12px; background:var(--d-bg); color:var(--d-hi); padding:0 6px; font-weight:600; }
-.dos-box.narrow{ max-width:560px; }
-.dos-cols{ display:flex; gap:14px; flex-wrap:wrap; align-items:flex-start; }
-.dos-cols > .dos-box{ flex:1 1 360px; }
-.dos-cols > .dos-box.dos-side{ flex:0 1 auto; }
-.dos-f{ display:flex; align-items:center; gap:10px; margin:6px 0; }
-.dos-f > span{ min-width:150px; color:var(--d-hi); }
-.dos-in{
-  font:inherit; color:#000; background:var(--d-cy); border:0; outline:0; padding:1px 6px;
-  flex:1; max-width:340px; min-width:0; text-shadow:none; caret-color:#000;
-}
-.dos-in:focus{ background:#55ffff; }
-.dos-in::placeholder{ color:#005f5f; }
-.dos-hint{ color:#7f86c7; font-size:12px; margin-top:8px; }
-.dos-pre{ margin:6px 0 0; white-space:pre; overflow-x:auto; font:inherit; }
-.dos-big{ font-size:20px; color:var(--d-ye); }
-.dos-th{ color:var(--d-hi); text-decoration:underline; }
-.dos-row{ cursor:pointer; }
-.dos-row:hover{ background:var(--d-cy); color:#000; }
-.dos-sum{ color:var(--d-hi); }
-.dos-menu .dos-item{ padding:1px 6px; cursor:pointer; white-space:pre; }
-.dos-menu .dos-item b{ color:var(--d-ye); margin-right:6px; }
-.dos-menu .dos-item.sel, .dos-menu .dos-item:hover{ background:var(--d-fg); color:#000; }
-.dos-menu .dos-item.sel b, .dos-menu .dos-item:hover b, .dos-menu .dos-item.sel .dim{ color:#000; }
-.dos-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
-.dos-btn{ font:inherit; background:var(--d-fg); color:#000; border:0; padding:2px 10px; cursor:pointer; box-shadow:3px 3px 0 #000; text-shadow:none; }
-.dos-btn b{ color:#aa0000; }
-.dos-btn:active{ transform:translate(2px,2px); box-shadow:1px 1px 0 #000; }
-.dos-center{ display:flex; flex-direction:column; align-items:center; gap:4px; }
-.dos-logo{ margin:0; color:var(--d-cy); line-height:1.15; }
-.dos-title{ font-size:28px; font-weight:600; letter-spacing:.3em; color:var(--d-ye); }
-.dos-sub{ color:#7f86c7; font-size:12px; margin-bottom:12px; text-align:center; }
-.dos-card{ margin:0; color:var(--d-ye); line-height:1.2; }
-.drawer-wrap{ overflow:hidden; padding:10px 0 30px; }
-.drawer{ margin:0; color:var(--d-fg); transition:transform .25s cubic-bezier(.2,1.6,.4,1); }
-.drawer.open{ transform:translateY(22px); color:var(--d-ye); }
-.receipt-wrap{ display:flex; flex-direction:column; align-items:center; }
-.receipt{
-  margin:0; background:#f4f1e6; color:#222; text-shadow:none; padding:14px 16px; width:max-content; max-width:100%;
-  font-size:12px; line-height:1.3; white-space:pre; overflow:auto; max-height:60vh;
-  box-shadow:0 6px 18px rgba(0,0,0,.6); border-top:6px dashed #f4f1e6;
-}
+/* Balken mit 50-%-Linie */
+.pl-meter{ margin:8px 0 6px; font-variant-numeric:tabular-nums; }
+.pl-bar{ position:relative; height:14px; display:flex; background:rgba(51,255,102,.08); border:1px solid rgba(51,255,102,.3); }
+.pl-bar i{ display:block; height:100%; transition:width .12s linear; }
+.pl-r{ background:var(--red); box-shadow:0 0 8px rgba(255,90,90,.6); }
+.pl-b{ background:var(--pl-blue); box-shadow:0 0 8px rgba(74,168,255,.6); margin-left:auto; }
+.pl-mid{ position:absolute; left:50%; top:-5px; bottom:-5px; width:2px; margin-left:-1px; background:#fff; box-shadow:0 0 6px #fff; }
+.pl-nums{ display:flex; justify-content:space-between; gap:8px; font-size:12px; margin-top:3px; }
+.pl-tr{ color:var(--red); }
+.pl-tb{ color:var(--pl-blue); }
+
+/* Protokoll */
+.pl-log{ flex:1; min-height:0; overflow:auto; white-space:pre-wrap; word-break:break-word; line-height:1.45; }
+.pl-log b{ font-weight:500; }
+.pl-log .ok{ color:var(--green-bright); }
+.pl-log .err{ color:var(--red); }
+.pl-log .warn, .pl .warn{ color:var(--amber); }
+.pl-hl{ color:var(--amber); letter-spacing:.08em; }
+.pl-rule{ color:var(--green-bright); }
+.pl-case{ color:var(--amber); margin-top:2px; }
+.pl-chat{ padding-left:1em; }
+.pl-who{ color:var(--amber); }
+.pl-you{ color:#fff; }
+.pl-box{ border:1px dashed rgba(51,255,102,.4); padding:6px 10px; margin:8px 0; white-space:pre; overflow-x:auto; }
+.pl-src{ white-space:normal; border-style:solid; border-color:var(--amber); }
+.pl-src a{ color:var(--green-bright); text-decoration:underline; text-underline-offset:3px; }
+.pl-src a:hover{ background:var(--green); color:#000; text-shadow:none; }
+
+/* Tasten: immer sichtbar, bei der Wahl groß und farbig */
+.pl-pad, .touch .pl-pad{ display:flex; flex-wrap:nowrap; }
+.pl-pad button{ font-size:14px; padding:0 14px; }
+.pl-pad.pl-choose button{ flex:1 1 0; height:64px; font-size:18px; letter-spacing:.1em; max-width:280px; }
+.pl-pad.pl-choose button:last-child{ flex:0 0 auto; height:64px; font-size:13px; letter-spacing:0; }
+.pl-pad .pl-br{ border:2px solid var(--red); color:var(--red); text-shadow:0 0 8px rgba(255,90,90,.6); background:rgba(255,90,90,.08); }
+.pl-pad .pl-bb{ border:2px solid var(--pl-blue, #4aa8ff); color:#4aa8ff; text-shadow:0 0 8px rgba(74,168,255,.6); background:rgba(74,168,255,.08); }
+.pl-pad .pl-br:active{ background:var(--red); color:#000; }
+.pl-pad .pl-bb:active{ background:#4aa8ff; color:#000; }
+
+/* Regeln */
+.pl-ov{ z-index:5; cursor:pointer; background:#000; justify-content:flex-start; }
+.pl-rules{ text-align:left; white-space:normal; overflow:auto; max-width:640px; max-height:100%; padding:10px; line-height:1.45; }
+.pl-rules p{ margin:0 0 10px; }
+.pl-mx{ margin:0 0 12px; font:inherit; white-space:pre; overflow-x:auto; color:var(--green-bright); }
+.pl-rules .ok{ color:var(--green-bright); } .pl-rules .err{ color:var(--red); }
+.pl-rules .pl-tb{ color:#4aa8ff; } .pl-rules .pl-tr{ color:var(--red); }
+
+.touch .pl-pad button{ font-size:15px; padding:0 6px; }
+.touch .pl-pad.pl-choose button{ font-size:19px; height:70px; }
+.touch .pl-pad.pl-choose button:last-child{ font-size:13px; height:70px; }
+
 @media (max-width: 600px){
-  .dos{ font-size:11px; }
-  .dos-f{ flex-direction:column; align-items:stretch; gap:2px; }
-  .dos-f > span{ min-width:0; }
-  .dos-in{ max-width:none; font-size:16px; }   /* 16px: iOS zoomt sonst beim Fokussieren */
-  .dos-title{ font-size:20px; }
-  .dos-logo{ font-size:9px; }
-  .dos-main{ padding:8px; }
+  .pl-world{ flex-basis:34%; }
+  .pl-log{ font-size:13px; }
+  .pl-box{ font-size:11px; }
+  .pl-mx{ font-size:12px; }
+  .pl-hide{ display:none; }
 }
 
-/* =============================================================
-   Touch-Geräte (Handy/Tablet), Klasse .touch setzt core.js
-   ============================================================= */
-html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
-.touch{
-  --botbar-h: 42px;
-  -webkit-user-select:none; user-select:none;
-  -webkit-touch-callout:none;
-  -webkit-tap-highlight-color:transparent;
-  touch-action:manipulation;          /* kein Doppeltipp-Zoom */
-  overscroll-behavior:none;
-}
-.touch input, .touch textarea{ -webkit-user-select:text; user-select:text; }
-/* unter 16px zoomt iOS beim Antippen eines Eingabefelds hinein */
-.touch .cli-input, .touch .dos-in{ font-size:16px; }
-
-/* Layout folgt dem sichtbaren Bereich (Bildschirmtastatur), Werte setzt core.js */
-.vv .topbar{ top:var(--vvt, 0px); }
-.vv .stage{
-  top:calc(var(--vvt, 0px) + var(--topbar-h) + env(safe-area-inset-top, 0px));
-  bottom:auto;
-  height:calc(var(--vvh, 100%) - var(--topbar-h) - env(safe-area-inset-top, 0px) - var(--botbar-h) - env(safe-area-inset-bottom, 0px));
-}
-.vv .botbar{ bottom:auto; top:calc(var(--vvt, 0px) + var(--vvh, 100%) - var(--botbar-h) - env(safe-area-inset-bottom, 0px)); }
-/* Tastatur offen: Fußleiste weg, die Fläche gehört der Eingabe */
-.vv.kbd .botbar{ display:none; }
-.vv.kbd .stage{ height:calc(var(--vvh, 100%) - var(--topbar-h) - env(safe-area-inset-top, 0px)); }
-
-/* Fußleiste: große Tippflächen */
-.touch .botbar{ font-size:13px; }
-.touch .botbar .seg{ padding:0 16px; }
-.touch .botbar .seg[data-go]{ min-width:84px; justify-content:center; }
-
-/* Ohne Flackern und Scanline-Überblendung: kostet auf dem Handy pro Bild die ganze Seite */
-.touch.app-on{ animation:none; }
-.touch.app-on::before{ display:none; }
-
-/* App-Auswahl: Zeilen groß genug für Finger */
-.touch .menu{ -webkit-overflow-scrolling:touch; }
-.touch .menu .item{ padding:9px 6px; align-items:center; }
-.touch .menu .item:hover:not(.sel){ background:none; color:inherit; text-shadow:inherit; }
-.touch .menu .item:hover:not(.sel) .name{ color:var(--green-bright); }
-.touch .menu .item:hover:not(.sel) .desc{ color:var(--green-dim); }
-.touch .menu .hint{ display:none; }
-
-/* Spieltasten: volle Breite, groß, mehrere Finger gleichzeitig (Lenken + Bremsen) */
-.touch .pad{
-  flex-wrap:nowrap; gap:6px; padding-top:8px;
-  width:100%; max-width:560px; margin:0 auto;
-}
-.touch .pad button{
-  flex:1 1 0; min-width:0; height:58px; font-size:22px;
-  touch-action:none; border-radius:4px;
-}
-/* Tastenkürzel-Hinweise in Statuszeilen helfen auf dem Handy nicht */
-.touch .app-bar{ gap:10px; font-size:11px; }
-.touch .app-bar .right{ display:none; }
-
-/* Querformat auf dem Handy: Tasten seitlich wäre schöner, flach halten reicht */
-@media (pointer:coarse) and (max-height:500px){
-  .touch .pad button{ height:44px; }
-  .touch .app-bar{ display:none; }
-}
-.vv.kbd .side{ display:none; }
-.vv.kbd .stage{ grid-template-rows:1fr; }
-.touch .pad button{ white-space:nowrap; overflow:hidden; }
-
-/* Tipp-Menü der Text-Apps (fsociety, swan): Befehle als Knöpfe wie bei Telegram */
-.tty-chips{ display:flex; flex-wrap:wrap; gap:6px; padding-top:8px; }
-.tty-chips[hidden]{ display:none; }
-.tty-chips-head{ width:100%; font-size:11px; color:var(--green-dim); letter-spacing:.05em; }
-.tty-chips button{
-  font:inherit; font-size:12px; background:#000; color:var(--green-bright); text-shadow:inherit;
-  border:1px solid rgba(51,255,102,.45); border-radius:6px; padding:4px 10px; cursor:pointer;
-}
-.tty-chips button:hover:not(:disabled){ background:rgba(51,255,102,.12); }
-.tty-chips button:active:not(:disabled){ background:var(--green); color:#000; text-shadow:none; }
-.tty-chips button.aux{ color:var(--green-dim); border-style:dashed; }
-.tty-chips button:disabled{ opacity:.35; cursor:default; }
-.touch .tty-chips button{ flex:1 1 30%; min-height:44px; padding:6px 4px; font-size:14px; }
-.tty-touch .tty-in{ display:none; }
-.tty-touch.kb .tty-in{ display:flex; }
-
-/* video auf dem Handy: Listenzeilen und Knöpfe groß genug zum Antippen */
-.touch .dos-table{ line-height:2.3; }
-.touch .dos-row{ display:inline-block; width:100%; }
-.touch .dos-btn{ padding:8px 12px; }
-.touch .dos-key{ padding:8px 9px; }
-.touch .dos-menu .dos-item{ padding:8px 6px; }
-.dos-actions .dos-btn{ cursor:pointer; }
-
-/* life: Erklärung mit Computerstimme, Text läuft oben mit */
-.life-say{
-  position:absolute; left:8px; right:8px; top:8px; z-index:2;
-  background:rgba(0,0,0,.86); border:1px solid rgba(51,255,102,.5); padding:8px 12px 10px;
-  box-shadow:0 0 18px rgba(51,255,102,.15); cursor:pointer;
-}
-.life-say[hidden]{ display:none; }
-.life-say-h{ font-size:11px; color:var(--green-dim); letter-spacing:.08em; margin-bottom:4px; }
-.life-say-h .dim{ color:var(--green-dim); opacity:.7; }
-.life-say-t{ color:var(--green-bright); font-size:15px; line-height:1.45; min-height:4.35em; }
-@media (max-width:480px){ .life-say-t{ font-size:14px; } }
-
-/* matrix: grobe Pixel, leicht weich und leuchtend wie auf einem alten Monitor */
-.matrix-cv{ image-rendering:pixelated; filter:blur(.45px) brightness(1.2); }
-
-/* Musik-Schalter in der Fußleiste */
-.botbar .music-seg{ cursor:pointer; }
-.botbar .music-seg b{ color:var(--green-dim); font-weight:500; }
-.botbar .music-seg.on b{ color:var(--green-bright); }
-.botbar .music-seg:hover{ color:var(--green-bright); }
+/* Auflösung: ohne Weltkarte, nur Text */
+.pl-final .pl-world, .pl-final .pl-meter{ display:none; }
