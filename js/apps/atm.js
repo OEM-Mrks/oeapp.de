@@ -1,53 +1,48 @@
-/* atm — Hommage an die Geldautomaten-Szene aus Terminator 2: ein Atari
-   Portfolio hängt am Kartenschlitz, man sieht nur seinen Bildschirm.
-   Befehle werden eingetippt, Zahlenkolonnen rauschen durch, die PIN
-   rastet Stelle für Stelle ein, am Ende: "Easy money!".
-   Reine Animation, keine Logik dahinter. */
+/* atm — Hommage an die Geldautomaten-Szene aus Terminator 2: das
+   PIN-Programm läuft direkt hier im Terminal. Befehle werden eingetippt,
+   Zahlenkolonnen rauschen durch, die PIN rastet Stelle für Stelle ein,
+   am Ende: "Easy money!". Reine Animation, keine Logik dahinter. */
 
 OE.register({
   id: "atm",
-  alias: ["portfolio", "t2"],
-  title: "portfolio.exe → atm",
-  desc: "Atari Portfolio am Geldautomaten (T2-Hommage, Animation).",
+  alias: ["portfolio", "t2", "pinread"],
+  title: "atm // pinread",
+  desc: "PIN-Programm am Geldautomaten (T2-Hommage, Animation).",
   start(ctx){
-    const COLS = 40, ROWS = 8;   // so groß war das LCD des Portfolio
-    const KEYS = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM.\\"];
+    const PS = "oe@oeapp:";
 
     ctx.el.innerHTML = `
-      <div class="app-bar"><span>ATARI PORTFOLIO <b>// 80C88 · 128K</b></span><span>link: <b>card slot</b></span>
+      <div class="app-bar"><span>pinread <b>// v1.2</b></span><span>link: <b>card slot</b></span>
         <span class="right">simulation · keine echten daten</span></div>
-      <div class="pf-wrap">
-        <div class="pf">
-          <div class="pf-top"><span class="pf-brand">ATARI</span><span class="pf-model">Portfolio</span></div>
-          <div class="pf-lcd"><pre class="pf-screen"></pre><div class="pf-big" hidden></div></div>
-          <div class="pf-kb">${KEYS.map(r => `<div class="pf-row">${r.split("").map(k => `<i data-k="${k}">${k}</i>`).join("")}</div>`).join("")}
-            <div class="pf-row"><i class="wide" data-k=" ">&nbsp;</i><i class="ent" data-k="⏎">⏎</i></div></div>
-        </div>
-      </div>
+      <div class="atm-term"><pre class="atm-screen"></pre><div class="atm-big" hidden></div></div>
       <div class="atm-hint dim"></div>`;
-    const scr = ctx.el.querySelector(".pf-screen"), big = ctx.el.querySelector(".pf-big");
-    const hint = ctx.el.querySelector(".atm-hint"), pf = ctx.el.querySelector(".pf");
-    const keyEl = k => ctx.el.querySelector(`.pf-kb i[data-k="${k === "\n" ? "⏎" : k.toUpperCase()}"]`);
+    const term = ctx.el.querySelector(".atm-term"), scr = ctx.el.querySelector(".atm-screen");
+    const big = ctx.el.querySelector(".atm-big"), hint = ctx.el.querySelector(".atm-hint");
 
-    /* Schriftgröße so wählen, dass genau 40 Zeichen in die Breite passen */
-    function fit(){
-      // Breite: 40 Zeichen à 0,6em + 58px Rahmen; Höhe: LCD + Tastatur ≈ 17,3em + 140px
-      const w = Math.min(ctx.el.clientWidth - 8, 820), h = ctx.el.clientHeight;
-      const fs = Math.min((w - 58) / (COLS * 0.6), h > 0 ? (h - 140) / 17.3 : Infinity);
-      pf.style.setProperty("--fs", Math.max(7, fs) + "px");
+    /* Zeilen/Spalten aus der verfügbaren Fläche, wird bei jedem cls() neu gemessen */
+    let COLS = 40, ROWS = 8;
+    function measure(){
+      const probe = document.createElement("span");
+      probe.textContent = "0".repeat(10);
+      scr.appendChild(probe);
+      const r = probe.getBoundingClientRect();
+      probe.remove();
+      const cw = r.width / 10 || 8.4, lh = r.height || 19;
+      COLS = Math.max(24, Math.floor(term.clientWidth / cw));
+      ROWS = Math.max(8, Math.min(40, Math.floor(term.clientHeight / lh)));
     }
-    const ro = window.ResizeObserver ? new ResizeObserver(fit) : null;
-    if (ro) ro.observe(ctx.el);
-    fit();
 
-    /* ---------- LCD: 40×8 Zeichen, Cursor, Scrollbereich ---------- */
+    /* ---------- Bildschirmpuffer: Cursor, Scrollbereich ---------- */
     let rows, cx, cy, top = 0, cursor = true, blink = true;
-    function cls(){ rows = Array.from({ length: ROWS }, () => ""); cx = cy = 0; top = 0; paint(); }
+    function cls(){ measure(); rows = Array.from({ length: ROWS }, () => ""); cx = cy = 0; top = 0; paint(); }
     function paint(){
       scr.innerHTML = rows.map((r, y) => {
-        const line = r.padEnd(COLS).slice(0, COLS);
-        if (!cursor || !blink || y !== cy) return ctx.esc(line);
-        return ctx.esc(line.slice(0, cx)) + `<span class="pf-cur">${ctx.esc(line[cx] || " ")}</span>` + ctx.esc(line.slice(cx + 1));
+        const line = r.slice(0, COLS);
+        let html = (!cursor || !blink || y !== cy) ? ctx.esc(line)
+          : ctx.esc(line.slice(0, cx)) + `<span class="atm-cur">${ctx.esc(line[cx] || " ")}</span>` + ctx.esc(line.slice(cx + 1));
+        // Shell-Prompt wie unten im Haupt-Terminal einfärben
+        if (line.startsWith(PS)) html = html.replace(/^(oe@oeapp:)(.*?)(\$)/, '<span class="ps1">oe@oeapp<span class="dim">:</span>$2<span class="dim">$</span></span>');
+        return html;
       }).join("\n");
     }
     function newline(){
@@ -69,12 +64,10 @@ OE.register({
     const ok = id => ctx.alive && id === runId;
     async function wait(id, ms){ await ctx.sleep(ms); return ok(id); }
 
-    // Eintippen wie von Hand: ungleichmäßiges Tempo, Taste leuchtet auf
+    // Eintippen wie von Hand: ungleichmäßiges Tempo
     async function type(id, s, base = 120){
       for (const ch of s){
         if (!ok(id)) return false;
-        const k = keyEl(ch);
-        if (k){ k.classList.add("on"); ctx.after(90, () => k.classList.remove("on")); }
         putc(ch); paint();
         ctx.beep(ch === "\n" ? 900 : 1700 + ctx.rint(0, 300), 12, "square", 0.012);
         if (!await wait(id, base * (0.55 + Math.random() * 0.9))) return false;
@@ -96,20 +89,18 @@ OE.register({
       cls();
       if (!await wait(id, 500)) return;
 
-      // DOS-Prompt, Programm starten
-      print("Atari Portfolio  DOS 2.11");
-      print("");
-      if (!await wait(id, 700)) return;
-      putc("C"); putc(":"); putc("\\"); putc(">"); paint();
+      // Shell-Prompt, Programm starten
+      const prompt = dir => { for (const ch of `${PS}${dir}$ `) putc(ch); paint(); };
+      prompt("~");
       if (!await wait(id, 900)) return;
-      if (!await enter(id, "cd \\atm")) return;
-      for (const ch of "C:\\ATM>") putc(ch); paint();
+      if (!await enter(id, "cd atm")) return;
+      prompt("~/atm");
       if (!await wait(id, 700)) return;
-      if (!await enter(id, "pinread /link=card", 700)) return;
+      if (!await enter(id, "./pinread --link=card", 700)) return;
 
       cls(); cursor = false;
       print("PIN IDENTIFICATION PROGRAM   v1.2");
-      print("========================================");
+      print("=".repeat(Math.min(COLS, 40)));
       if (!await wait(id, 900)) return;
       print("card reader ........ ");
       if (!await wait(id, 700)) return;
@@ -133,7 +124,7 @@ OE.register({
       const status = n => `PIN  [ ${pin.map((d, i) => i < n ? d : "_").join(" ")} ]` + (n < 4 ? "   PROCESSING" : "   IDENTIFIED");
       line(0, "PIN IDENTIFICATION PROGRAM   v1.2");
       line(1, status(0));
-      line(2, "----------------------------------------");
+      line(2, "-".repeat(Math.min(COLS, 40)));
       cy = 3;
       for (let pos = 0; pos < 4; pos++){
         const n = 26 + pos * 8;
@@ -185,13 +176,13 @@ OE.register({
       big.innerHTML = `EASY<br>MONEY!`;
       big.hidden = false;
       ctx.beep(660, 120, "square", 0.05); ctx.after(140, () => ctx.beep(990, 260, "square", 0.05));
-      ctx.log("OK", `portfolio: <span class="path">pinread</span> — <span class="ok">easy money</span> <span class="dim">(nur Animation)</span>`);
+      ctx.log("OK", `atm: <span class="path">pinread</span> — <span class="ok">easy money</span> <span class="dim">(nur Animation)</span>`);
       if (!await wait(id, 3200)) return;
       big.hidden = true;
       cls(); cursor = true;
       print("Easy money.");
       print("");
-      for (const ch of "C:\\ATM>") putc(ch); paint();
+      prompt("~/atm");
       hint.textContent = (ctx.touch ? "tippen" : "ENTER") + " = nochmal · ESC = exit";
       done = true;
     }
@@ -201,7 +192,6 @@ OE.register({
     run();
 
     return {
-      stop(){ if (ro) ro.disconnect(); },
       key(e){
         if (e.key === "Enter" || e.key === " "){ run(); return true; }
         if (e.key === "q"){ ctx.exit(); return true; }
