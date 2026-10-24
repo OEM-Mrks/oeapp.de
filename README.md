@@ -26,7 +26,7 @@ live erzeugt, je Spiel ein eigener Track).
 | `dilemma`  | Gefangenendilemma: Verhör über viele Runden, `--turnier` (Axelrod) |
 | `pille`    | Rot oder Blau? Das Umfrage-Dilemma mit Stimme, Quelle: Prof. Rieck |
 | `video`    | Videothek-Kasse von 1994 im DOS-Look: Verleih, Rückgabe, Bon   |
-| `swan`     | 108-Minuten-Countdown aus „Lost“ (`swan --fast` ab 4:00)    |
+| `swan`     | 108-Minuten-Countdown aus „Lost“ mit Finale bei 0:00 (`skip` = letzte 15 s, `--fast` ab 4:00, `--pomodoro` = 25/5) |
 | `atm`      | PIN-Programm knackt den Geldautomaten (T2-Hommage)          |
 | `fsociety` | Fake-Hacker-Shell im Stil von „Mr. Robot“, `/help`          |
 | `life`     | Conways Game of Life zum Selberzeichnen, `?` erklärt per Stimme |

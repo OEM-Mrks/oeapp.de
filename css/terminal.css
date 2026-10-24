@@ -1005,3 +1005,54 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 
 /* Auflösung: ohne Weltkarte, nur Text */
 .pl-final .pl-world, .pl-final .pl-meter{ display:none; }
+/* swan: Alarm, Finale (Hieroglyphen, Störbild, Failsafe-Schlüssel), Pomodoro */
+.swan-wrap{ flex:1; min-height:0; display:flex; flex-direction:column; position:relative; }
+.swan-sub{ text-align:center; font-size:11px; letter-spacing:.25em; text-transform:uppercase; color:var(--green-dim); margin:-8px 0 8px; }
+.swan-clock{ transition:font-size .25s ease; }
+.swan-clock.crit.swan-final{
+  font-size:clamp(64px, 19vw, 180px); color:#ff3b3b;
+  text-shadow:0 0 16px rgba(255,40,40,1), 0 0 48px rgba(255,0,0,.6);
+  animation:swan-beat 1s ease-out infinite;
+}
+@keyframes swan-beat{ 0%{ transform:scale(1.06); } 40%,100%{ transform:scale(1); } }
+.swan-clock.swan-glyph{ color:#ff4a3a; text-shadow:0 0 14px rgba(255,60,40,.9); animation:none; letter-spacing:.14em; }
+.swan-clock.swan-boot{ color:var(--green-dim); text-shadow:none; }
+.swan-clock.swan-break{ color:#7fd8ff; text-shadow:0 0 10px rgba(127,216,255,.8), 0 0 30px rgba(127,216,255,.3); }
+.swan-wrap.swan-alarm{ animation:swan-alarm 1s steps(2) infinite; }
+@keyframes swan-alarm{ 0%{ box-shadow:inset 0 0 60px rgba(255,0,0,.35); } 100%{ box-shadow:inset 0 0 0 rgba(255,0,0,0); } }
+.swan-ch{ display:inline-block; will-change:transform; }
+
+/* Sprung zum Finale gut sichtbar */
+.tty-chips button.swan-skip{ color:var(--amber); border-color:var(--amber); font-weight:600; text-shadow:0 0 8px rgba(255,180,84,.6); }
+.tty-chips button.swan-skip:hover:not(:disabled){ background:rgba(255,180,84,.12); }
+
+/* Störbild */
+.swan-static{ position:absolute; inset:0; z-index:5; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.swan-static canvas{ position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; opacity:.75; }
+.swan-static-t{ position:relative; font-size:clamp(26px, 7vw, 64px); font-weight:600; letter-spacing:.12em; color:#fff;
+  background:rgba(0,0,0,.7); padding:8px 18px; text-align:center; text-shadow:0 0 12px rgba(255,255,255,.7); }
+.swan-static-t small{ display:block; font-size:12px; letter-spacing:.2em; color:#ccc; font-weight:400; }
+
+/* Failsafe-Schlüssel */
+.swan-key{ position:absolute; inset:0; z-index:6; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:14px; padding:16px; text-align:center; background:rgba(10,0,0,.88); }
+.swan-key-h{ color:#ff4a3a; font-size:clamp(22px, 5vw, 40px); letter-spacing:.2em; text-shadow:0 0 12px rgba(255,60,40,.8); animation:blink 1s steps(2) infinite; }
+.swan-key-t{ color:var(--amber); line-height:1.5; }
+.swan-keybtn{ font:inherit; font-size:clamp(17px, 4.2vw, 24px); font-weight:600; letter-spacing:.08em; cursor:pointer;
+  color:#000; background:var(--amber); border:2px solid #ffd59a; border-radius:8px; padding:14px 26px; min-height:56px;
+  box-shadow:0 0 24px rgba(255,180,84,.6); }
+.swan-keybtn:hover:not(:disabled){ background:#ffd59a; }
+.swan-keybtn:disabled{ cursor:default; }
+.swan-keyico{ display:inline-block; transition:transform .5s cubic-bezier(.5,1.8,.5,1); }
+.swan-keybtn.turned .swan-keyico{ transform:rotate(90deg); }
+.swan-key-n{ font-size:12px; color:var(--green-dim); letter-spacing:.08em; }
+.swan-key-n b{ color:var(--amber); }
+
+/* Stille nach dem Blitz */
+.swan-black{ position:absolute; inset:0; z-index:7; background:#000; }
+
+@media (prefers-reduced-motion: reduce){
+  .swan-clock.crit.swan-final, .swan-wrap.swan-alarm, .swan-key-h{ animation:none; }
+  .swan-keyico{ transition:none; }
+}
+.touch .tty-chips button.swan-skip{ white-space:nowrap; font-size:12px; letter-spacing:-.02em; }
