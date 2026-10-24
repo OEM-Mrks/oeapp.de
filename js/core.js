@@ -585,6 +585,7 @@ function exitApp(){
   setActiveSeg("log");
   log.scrollTop = log.scrollHeight;
   if (!TOUCH) $("#cli").focus();
+  applyUpdate();   // ein wartendes Update erst nach dem Spiel einspielen
 }
 
 function setTitle(){
@@ -889,6 +890,35 @@ async function setLog(on){
   sectionDivider("steady state");
   addLine(fmt("OK", `bereit. <span class="ok">help</span> für Befehle, <span class="ok">apps</span> für die Mini-Apps, <span class="ok">log off</span> stoppt das Log.`));
 }
+
+/* -------- Update-Check --------
+   Als App auf dem Home-Bildschirm lädt iOS die Seite oft tagelang nicht neu.
+   Darum beim Zurückholen in den Vordergrund und alle 10 Minuten index.html
+   frisch holen und die Versionsnummer (?v=…) vergleichen. Ist sie neu,
+   wird neu geladen – aber nie mitten in einer App oder einer Eingabe. */
+
+const MY_VER = ((document.querySelector('script[src*="js/core.js"]') || {}).src || "").match(/[?&]v=(\d+)/)?.[1];
+let updateReady = false, lastCheck = 0;
+
+async function checkUpdate(){
+  if (updateReady) return applyUpdate();
+  if (!MY_VER || Date.now() - lastCheck < 60000) return;
+  lastCheck = Date.now();
+  try{
+    const r = await fetch("index.html?u=" + Date.now(), { cache: "no-store" });
+    const v = (await r.text()).match(/js\/core\.js\?v=(\d+)/)?.[1];
+    if (v && v !== MY_VER) updateReady = true;
+  } catch(e){}
+  applyUpdate();
+}
+function applyUpdate(){
+  if (!updateReady || current || halted || $("#cli").value) return;
+  out(`<span class="ok">update</span> <span class="dim">— neue Version gefunden, lade neu …</span>`);
+  setTimeout(() => location.reload(), 900);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkUpdate(); });
+addEventListener("pageshow", e => { if (e.persisted) checkUpdate(); });
+setInterval(checkUpdate, 10 * 60 * 1000);
 
 /* -------- MAIN -------- */
 
