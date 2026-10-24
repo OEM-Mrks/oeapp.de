@@ -331,7 +331,7 @@ async function showQuote(){
   txt.innerHTML = full;
   await sleep(140);
   aut.innerHTML = `— <b>${q.a}</b>`;
-  if (!quiet()) addLine(fmt("OK", `quote.daemon emitted <span class="path">${q.tag}</span> — <span class="ok">"${q.t.length>60? q.t.slice(0,60)+"…" : q.t}"</span> <span class="dim">— ${q.a}</span>`));
+  if (logOn && !quiet()) addLine(fmt("OK", `quote.daemon emitted <span class="path">${q.tag}</span> — <span class="ok">"${q.t.length>60? q.t.slice(0,60)+"…" : q.t}"</span> <span class="dim">— ${q.a}</span>`));
   quoteBusy = false;
 }
 
@@ -581,10 +581,14 @@ function stopCurrent(){
 function exitApp(){
   stopCurrent();
   document.body.classList.remove("app-on");
-  $("#mainTitle").innerHTML = "// system.log &nbsp; ── &nbsp; tail -f /var/log/oeapp.log";
+  setTitle();
   setActiveSeg("log");
   log.scrollTop = log.scrollHeight;
   if (!TOUCH) $("#cli").focus();
+}
+
+function setTitle(){
+  $("#mainTitle").innerHTML = logOn ? "// system.log &nbsp; ── &nbsp; tail -f /var/log/oeapp.log" : "// tty1 &nbsp; ── &nbsp; oe@oeapp";
 }
 
 function setActiveSeg(id){
@@ -608,11 +612,12 @@ function out(html, cls = ""){ addLine(cls ? `<span class="${cls}">${html}</span>
 const COMMANDS = {
   help(){
     out(`<span class="ok">oeapp.de shell</span> <span class="dim">— alles läuft lokal im Browser, nichts davon ist echt.</span>`);
-    out(`<span class="dim">Befehle:</span>  help · apps · clear · quote · whoami · date · uname · echo · history · exit`);
+    out(`<span class="dim">Befehle:</span>  help · apps · log · clear · quote · whoami · date · uname · echo · history · exit`);
     out(`<span class="dim">Apps:</span>     ${APPS.filter(a => !a.hidden).map(a => `<span class="path">${a.id}</span>`).join(" · ")}`);
     out(`<span class="dim">Tasten:</span>   F2 = App-Auswahl · ESC = App beenden · ↑ = letzter Befehl · TAB = vervollständigen`);
   },
   ls(){ return runApp("apps"); },
+  log(args){ setLog(args[0] === "off" || args[0] === "stop" ? false : args[0] === "on" ? true : !logOn); },
   clear(){ log.innerHTML = ""; },
   quote(){ showQuote(); out(`<span class="dim">quote.daemon: neues Zitat angefordert →</span>`); },
   whoami(){ out("oe"); },
@@ -781,6 +786,110 @@ function go(target){
   runApp(target);
 }
 
+/* -------- Begrüßung --------
+   Nach dem Boot ist erst Ruhe, nur der Cursor blinkt. Wer nichts tut,
+   bekommt nach und nach Besuch vom Server: Tipp-Animation wie im
+   Messenger, dann eine Zeile – erst "Klopf, klopf.", später App-Vorschläge.
+   Jede Eingabe schiebt die nächste Meldung auf. Das Fake-Log läuft nur
+   noch auf Wunsch ("log"). */
+
+let logOn = false, logBooted = false;
+let lastInput = Date.now(), lastMsg = Date.now();
+let typingEl = null;
+
+function showTyping(){ if (!typingEl) typingEl = addLine(`<span class="typing" aria-label="schreibt …"><i></i><i></i><i></i></span>`); }
+function hideTyping(){ if (typingEl){ typingEl.remove(); typingEl = null; } }
+for (const ev of ["keydown", "pointerdown", "input"]) addEventListener(ev, () => { lastInput = Date.now(); hideTyping(); }, { capture: true, passive: true });
+
+// klickbare Vorschläge (vor allem fürs Handy)
+log.addEventListener("click", e => {
+  const a = e.target.closest("[data-cmd]");
+  if (a) runCommand(a.dataset.cmd);
+});
+const cmdLink = (cmd, label = cmd) => `<span class="run" data-cmd="${esc(cmd)}">${esc(label)}</span>`;
+
+// Zeile Zeichen für Zeichen eintippen, Markup bleibt erhalten
+async function say(html, speed = 42){
+  const div = addLine("");
+  div.classList.add("say");
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  const texts = [];
+  (function walk(n){ for (const c of n.childNodes){ if (c.nodeType === 3){ texts.push([c, c.textContent]); c.textContent = ""; } else walk(c); } })(tpl.content);
+  div.appendChild(tpl.content);
+  for (const [node, full] of texts) for (const ch of full){
+    node.textContent += ch;
+    log.scrollTop = log.scrollHeight;
+    if (ch !== " ") beep(1500 + rint(0, 300), 6, "square", 0.006);
+    await sleep(speed * (0.6 + Math.random() * 0.8));
+  }
+}
+
+const GREET = [
+  { wait: 2000, msg: () => "Klopf, klopf." },
+  { wait: 1500, msg: () => "Willkommen in der Matrix." },
+  { wait: 1500, msg: () => TOUCH
+      ? `Tipp unten auf ${cmdLink("apps", "☰ apps")} und such dir was aus.`
+      : `Such dir eine App aus: ${cmdLink("apps")} oder F2 – oder tipp einfach ihren Namen.` },
+];
+const NUDGES = [
+  a => `Wie wär's mit ${cmdLink(a.id)}? <span class="dim">${esc(a.desc || "")}</span>`,
+  a => `Ich hätte da was für dich: ${cmdLink(a.id)}.`,
+  a => `Noch da? ${cmdLink(a.id)} wartet auf dich.`,
+  a => `Psst … probier mal ${cmdLink(a.id)}.`,
+  a => `Langweilig? Eine Runde ${cmdLink(a.id)} hilft.`,
+  a => `Folge dem weißen Kaninchen: ${cmdLink(a.id)}.`,
+];
+let lastPick = null;
+function nudge(n){
+  if (n % 5 === 3) return `Oder schau dem System bei der Arbeit zu: ${cmdLink("log")}.`;
+  const pool = APPS.filter(a => !a.hidden && a.id !== "apps" && a.id !== lastPick);
+  const a = rand(pool);
+  lastPick = a.id;
+  return rand(NUDGES)(a);
+}
+
+async function greeter(){
+  let i = 0, n = 0;
+  lastMsg = Date.now();
+  for (;;){
+    const step = GREET[i];
+    // Abstand wächst mit jedem Vorschlag, damit es nicht nervt
+    const wait = step ? step.wait : Math.min(4000 + n * 3000, 25000);
+    const idle = () => Date.now() - Math.max(lastInput, lastMsg);
+    while (halted || current || logOn || idle() < wait || document.activeElement === $("#cli") && $("#cli").value) await sleep(200);
+    showTyping();
+    const until = Date.now() + 900 + Math.random() * 1100;
+    while (typingEl && Date.now() < until) await sleep(80);
+    if (!typingEl) continue;            // jemand hat getippt: der Server hört auf zu schreiben
+    hideTyping();
+    await say(step ? step.msg() : nudge(n));
+    lastMsg = Date.now();
+    if (step) i++; else n++;
+  }
+}
+
+async function setLog(on){
+  logOn = on;
+  setTitle();
+  if (!on){ out(`<span class="dim">log angehalten — „log“ startet es wieder.</span>`); return; }
+  quietUntil = 0;
+  hideTyping();
+  if (logBooted) return;
+  logBooted = true;
+  addLine(`<span class="ok">★</span>  ${SRV.host} <span class="dim">— static build</span> — process monitor attached.`);
+  addLine(fmt("OK","quote.daemon online — pulling from local store"));
+  addLine(fmt("OK",`<span class="path">/usr/local/oeapp/bin</span> mounted — ${APPS.filter(a=>!a.hidden).length} apps <span class="dim">(${TOUCH ? "unten auf ☰ apps tippen" : "tippe „apps“ oder drück F2"})</span>`));
+  await sleep(300);
+  sectionDivider("startup self-check");
+  await progressLine("preflight checks", 28);
+  await progressLine("warming cache", 32);
+  await asciiSpinner("verifying tls chain (Let's Encrypt R3)");
+  await asciiSpinner(`connecting to db-primary as ${SRV.host}`);
+  sectionDivider("steady state");
+  addLine(fmt("OK", `bereit. <span class="ok">help</span> für Befehle, <span class="ok">apps</span> für die Mini-Apps, <span class="ok">log off</span> stoppt das Log.`));
+}
+
 /* -------- MAIN -------- */
 
 async function start(){
@@ -794,32 +903,21 @@ async function start(){
   initKeys();
 
   await bootAnim();
-
-  addLine(`<span class="ok">★</span>  ${SRV.host} <span class="dim">— static build</span> — process monitor attached.`);
-  addLine(fmt("OK","quote.daemon online — pulling from local store"));
-  addLine(fmt("OK",`<span class="path">/usr/local/oeapp/bin</span> mounted — ${APPS.filter(a=>!a.hidden).length} apps <span class="dim">(${TOUCH ? "unten auf ☰ apps tippen" : "tippe „apps“ oder drück F2"})</span>`));
+  setTitle();
   if (!TOUCH) $("#cli").focus();
-  await sleep(300);
-
-  sectionDivider("startup self-check");
-  await progressLine("preflight checks", 28);
-  await progressLine("warming cache", 32);
-  await asciiSpinner("verifying tls chain (Let's Encrypt R3)");
-  await asciiSpinner(`connecting to db-primary as ${SRV.host}`);
-  sectionDivider("steady state");
-  addLine(fmt("OK", `bereit. <span class="ok">help</span> für Befehle, <span class="ok">apps</span> für die Mini-Apps.`));
+  greeter();
 
   setTimeout(showQuote, 4000);
   setInterval(showQuote, 12000);
 
   setInterval(() => {
-    if (quiet()) return;
+    if (!logOn || quiet()) return;
     const burst = 1 + (Math.random()<0.25 ? rint(1,3) : 0);
     for (let i=0; i<burst; i++) addLine(genLine());
   }, 380);
 
   setInterval(async () => {
-    if (quiet()) return;
+    if (!logOn || quiet()) return;
     const r = Math.random();
     if (r < 0.18){
       await progressLine(rand(["rebuilding index","compacting WAL","retraining ranker","encoding corpus"]), rint(20,40));
@@ -831,7 +929,7 @@ async function start(){
   }, 4500);
 
   setInterval(() => {
-    if (quiet()) return;
+    if (!logOn || quiet()) return;
     addLine(fmt("DBG", `stats refreshed — load=<span class="num">${$("#load").textContent}</span> mem=<span class="num">${Math.round(m.mem)}%</span> host=<span class="path">gh-pages</span>`));
   }, 30000);
 }

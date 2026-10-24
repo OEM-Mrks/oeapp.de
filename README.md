@@ -7,6 +7,8 @@ alle "Systemdaten", Logs und Hacks sind gespielt.
 ## Mini-Apps
 
 Im Prompt den Namen eintippen, `apps` bzw. **F2** für die Auswahl, **ESC** zurück.
+Nach dem Boot ist das Terminal still; wer nichts tippt, bekommt vom „Server“ nach und nach
+Nachrichten mit Tipp-Animation und App-Vorschläge. Das Fake-System-Log startet mit `log` (`log off` stoppt es).
 „♪ musik“ in der Fußleiste schaltet Synthwave-Musik in den Spielen ein (`js/music.js`,
 live erzeugt, je Spiel ein eigener Track).
 
