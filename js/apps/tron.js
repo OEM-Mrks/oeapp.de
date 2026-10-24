@@ -4,7 +4,10 @@
    (wie viel Platz bleibt mir?) und schneiden dir gern den Weg ab.
    Gelenkt wird mit zwei Flächen: linke = abbiegen aus Sicht des Fahrers nach
    links, rechte = nach rechts. Fährt das Rad nach unten, tauschen die beiden
-   still ihre Funktion, damit die linke Fläche auch dann zum linken Bildrand führt. */
+   still ihre Funktion, damit die linke Fläche auch dann zum linken Bildrand führt.
+   Drei Stufen (langsam / normal / schnell): ändern Tempo und wie weit die Gegner
+   vorausdenken. Wahl auf dem Startbildschirm mit 1/2/3, S oder ↑↓, per Tippen auf
+   die Stufe oder mit tron --langsam / --schnell. Rekord je Stufe getrennt. */
 
 OE.register({
   id: "tron",
@@ -24,9 +27,24 @@ OE.register({
       { name: "RINZ", col: "#ffe45a", glow: "rgba(255,228,90," },
     ];
 
+    // tempo: Faktor aufs Grundtempo; look/noise/aim: wie gründlich die Gegner planen
+    const LEVELS = [
+      { id: "langsam", tempo: 0.6,  look: 150, noise: 12, aim: 0.7 },
+      { id: "normal",  tempo: 1,    look: 400, noise: 8,  aim: 1 },
+      { id: "schnell", tempo: 1.35, look: 600, noise: 6,  aim: 1.15 },
+    ];
+    const ARGS = { "--langsam": 0, "--slow": 0, "--normal": 1, "--schnell": 2, "--fast": 2 };
+    let lv = ctx.store.get("tron.level", 1);
+    for (const a of ctx.args) if (a in ARGS) lv = ARGS[a];
+    if (!LEVELS[lv]) lv = 1;
+    ctx.store.set("tron.level", lv);
+    const L = () => LEVELS[lv];
+    // Rekord je Stufe; "normal" behält den alten Schlüssel
+    const bestKey = () => lv === 1 ? "tron.best" : "tron.best." + L().id;
+
     let C = 8, cols = 60, rows = 40, w = 0, h = 0, bg = null;
     let occ, bikes, state = "ready", round = 1, wins = 0, losses = 0, acc = 0, rate = 18, clock = 0, flash = 0, endT = 0;
-    let best = ctx.store.get("tron.best", 0);
+    let best = ctx.store.get(bestKey(), 0);
     const parts = [];
 
     function size(){
@@ -74,7 +92,7 @@ OE.register({
         wiggle: Math.random() }));
       for (const k of bikes){ k.trail.push([k.x, k.y]); occ[idx(k.x, k.y)] = 1; }
       parts.length = 0; acc = 0; flash = 0;
-      rate = 16 + Math.min(8, round);   // Felder pro Sekunde, wird mit jeder Runde etwas schneller
+      rate = (16 + Math.min(8, round)) * L().tempo;   // Felder pro Sekunde, wird mit jeder Runde etwas schneller
     }
 
     /* ---------- Computergegner: Platz zählen, Gegner abschneiden ---------- */
@@ -100,7 +118,7 @@ OE.register({
         const d = (k.d + turn + 4) % 4, [dx, dy] = DIRS[d];
         const nx = k.x + dx, ny = k.y + dy;
         if (!free(nx, ny)) continue;
-        let s = room(nx, ny, 400) * 10;
+        let s = room(nx, ny, L().look) * 10;
         // freie Strecke geradeaus
         let run = 0; while (run < 12 && free(nx + dx * run, ny + dy * run)) run++;
         s += run * 4;
@@ -108,10 +126,10 @@ OE.register({
         if (me.alive){
           const [mx, my] = DIRS[me.d];
           const tx = me.x + mx * 6, ty = me.y + my * 6;
-          s -= Math.hypot(tx - nx, ty - ny) * (1.2 + Math.min(round, 4) * 0.3);
+          s -= Math.hypot(tx - nx, ty - ny) * (1.2 + Math.min(round, 4) * 0.3) * L().aim;
         }
         if (turn === 0) s += 6;              // lieber geradeaus als zappeln
-        s += (Math.random() - 0.5) * 8;      // etwas Unberechenbarkeit
+        s += (Math.random() - 0.5) * L().noise;   // etwas Unberechenbarkeit
         if (s > bestScore){ bestScore = s; best = d; }
       }
       k.next = best;
@@ -156,18 +174,47 @@ OE.register({
       state = "end"; endT = 0;
       if (me.alive){
         wins++; round++;
-        if (wins > best){ best = wins; ctx.store.set("tron.best", best); }
+        if (wins > best){ best = wins; ctx.store.set(bestKey(), best); }
         ctx.beep(988, 120); ctx.after(140, () => ctx.beep(1318, 260));
         ctx.log("OK", `tron: Runde gewonnen <span class="dim">(${wins} Siege)</span>`);
-        overlay(`<div class="big" style="color:#5ae8ff">RUNDE GEWONNEN</div><div>Siege ${wins} · weiter mit ${Math.min(3, round)} Gegner${Math.min(3, round) > 1 ? "n" : ""}</div>
-          <div class="dim">${ctx.touch ? "tippen" : "ENTER"} = nächste Runde</div>`);
       } else {
         losses++;
-        ctx.log("WARN", `tron: Lichtrad zerstört nach ${wins} Siegen`);
-        overlay(`<div class="big" style="color:#ff9a3c">DEREZZED</div><div>${wins} ${wins === 1 ? "Sieg" : "Siege"} · Rekord ${best}</div>
-          <div class="dim">${ctx.touch ? "tippen" : "ENTER"} = neues Spiel · ESC = exit</div>`);
+        ctx.log("WARN", `tron: Lichtrad zerstört nach ${wins} Siegen <span class="dim">(${L().id})</span>`);
         state = "over";
       }
+      screen();
+    }
+
+    /* ---------- Bildschirme zwischen den Runden, mit Stufenwahl ---------- */
+    function screen(){
+      const go = ctx.touch ? "tippen" : "ENTER";
+      const pick = `<button type="button" class="tron-lv" style="font:inherit;color:#5ae8ff;background:rgba(90,232,255,.08);border:1px solid rgba(90,232,255,.5);padding:6px 14px;margin:4px 0;cursor:pointer;touch-action:manipulation">stufe ‹ <b>${L().id}</b> ›</button>`
+        + `<div class="dim">${ctx.touch ? "stufe antippen = wechseln" : "1 2 3 / ↑↓ = stufe"}</div>`;
+      if (state === "ready") overlay(`<div class="big" style="color:#5ae8ff;letter-spacing:.5em">T R O N</div><div>Lichtrad-Duell · nicht in die Wände fahren</div>
+        <div class="dim">${ctx.touch ? "linke/rechte Fläche = abbiegen" : "← → = abbiegen"}</div>${pick}
+        <div>${ctx.touch ? "tippen zum Start" : "ENTER = start"}</div>`);
+      else if (state === "end") overlay(`<div class="big" style="color:#5ae8ff">RUNDE GEWONNEN</div><div>Siege ${wins} · weiter mit ${Math.min(3, round)} Gegner${Math.min(3, round) > 1 ? "n" : ""}</div>
+        ${pick}<div class="dim">${go} = nächste Runde · stufe wechseln = neue Serie</div>`);
+      else if (state === "over") overlay(`<div class="big" style="color:#ff9a3c">DEREZZED</div><div>${wins} ${wins === 1 ? "Sieg" : "Siege"} · Rekord ${best}</div>
+        ${pick}<div class="dim">${go} = neues Spiel · ESC = exit</div>`);
+      const b = ov.querySelector(".tron-lv");
+      if (b){
+        b.addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); });
+        b.addEventListener("pointerup", e => { e.stopPropagation(); setLevel(lv + 1); });
+      }
+    }
+    // nur außerhalb der Fahrt; nach einer Runde beginnt dann eine neue Serie (Rekord je Stufe)
+    function setLevel(n){
+      if (!["ready", "end", "over"].includes(state)) return false;
+      n = (n + LEVELS.length) % LEVELS.length;
+      if (n === lv) return true;
+      lv = n; ctx.store.set("tron.level", lv);
+      best = ctx.store.get(bestKey(), 0);
+      if (state !== "ready"){ state = "ready"; round = 1; wins = 0; }
+      newRound();   // setzt auch das Tempo neu
+      ctx.beep(520 + lv * 180, 60, "square", 0.03);
+      screen(); draw(0);
+      return true;
     }
 
     /* ---------- Zeichnen ---------- */
@@ -221,10 +268,12 @@ OE.register({
       if (flash > 0){ g.fillStyle = `rgba(255,255,255,${flash * 0.5})`; g.fillRect(0, 0, W, H); flash = Math.max(0, flash - dt * 2.5); }
 
       const alive = bikes.slice(1).filter(k => k.alive).length;
-      bar.innerHTML = `<span>runde <b>${round}</b></span><span>siege <b>${wins}</b></span><span>rekord <b>${best}</b></span>
+      const html = `<span>runde <b>${round}</b></span><span>siege <b>${wins}</b></span><span>rekord <b>${best}</b></span><span class="tron-bar-lv" style="cursor:pointer">stufe <b>${L().id}</b></span>
         <span>gegner <b>${alive}</b>/${bikes.length - 1}</span><span class="right">P = pause</span>`;
+      if (html !== barHtml){ barHtml = html; bar.innerHTML = html; }   // nur bei Änderung, sonst trifft das Antippen ins Leere
     }
 
+    let barHtml = "";
     function overlay(html){ ov.hidden = !html; if (html) ov.innerHTML = html; }
 
     /* ---------- Steuerung: zwei Flächen ---------- */
@@ -268,7 +317,7 @@ OE.register({
         if (endT >= 1.8){ state = "running"; acc = 0; ctx.beep(880, 220, "square", 0.05); }
       }
       if (state === "running"){
-        acc += dt;
+        acc += Math.min(ms, 100) / 1000;   // Spielzeit: erst ab <10 fps gekappt, sonst unabhängig von der Bildrate
         while (acc >= 1 / rate && state === "running"){ acc -= 1 / rate; tick(); }
       }
       draw(dt);
@@ -285,9 +334,9 @@ OE.register({
       { label: "", key: "ArrowLeft", aria: "linke Taste" }, { label: "", key: "ArrowRight", aria: "rechte Taste" },
     ]);
     size();
-    overlay(`<div class="big" style="color:#5ae8ff;letter-spacing:.5em">T R O N</div><div>Lichtrad-Duell · nicht in die Wände fahren</div>
-      <div class="dim">${ctx.touch ? "linke/rechte Fläche = abbiegen" : "← → = abbiegen"}</div>
-      <div>${ctx.touch ? "tippen zum Start" : "ENTER = start"}</div>`);
+    screen();
+    // Stufe in der Statuszeile antippen/klicken = wechseln (zwischen den Runden)
+    bar.addEventListener("click", e => { if (e.target.closest(".tron-bar-lv")) setLevel(lv + 1); });
 
     return {
       stop(){ removeEventListener("resize", onResize); },
@@ -295,7 +344,9 @@ OE.register({
         const k = e.key;
         if (["ArrowLeft", "a", "A", "z", "Z"].includes(k)){ press(-1); return true; }
         if (["ArrowRight", "d", "D", "x", "X"].includes(k)){ press(1); return true; }
-        if (k === "ArrowUp" || k === "ArrowDown") return true;
+        if (k === "ArrowUp" || k === "ArrowDown"){ setLevel(lv + (k === "ArrowUp" ? 1 : -1)); return true; }
+        if (k === "1" || k === "2" || k === "3"){ setLevel(+k - 1); return true; }
+        if (k === "s" || k === "S"){ setLevel(lv + 1); return true; }
         if (k === "Enter" || k === " "){ begin(); return true; }
         if (k === "p" || k === "P"){
           if (state === "running"){ state = "paused"; overlay(`<div class="big">PAUSE</div><div class="dim">P = weiter</div>`); }
