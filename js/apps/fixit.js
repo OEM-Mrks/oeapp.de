@@ -2,6 +2,9 @@
    aber mit eigenen Figuren, eigener Pixelgrafik und eigenem Code:
    Flick-Fritz flickt mit seinem goldenen Hammer die Fenster, die Abriss-Atze
    vom Dach aus zertrümmert. Ein Level, 90 Sekunden.
+   Stufen: leicht (keine Hindernisse, wenige langsame Ziegel, 120 s, 5 Leben),
+   normal (das Original), schwer (75 s, schnellere Ziegel, mehr Würfe).
+   Wechsel auf Titel und Ergebnis mit ← → / L oder Antippen der Stufe.
    Gezeichnet wird in 160×208 echten Pixeln, dann ganzzahlig hochskaliert (sonst
    "sharp bilinear"), darüber Scanlines und etwas Leuchten wie auf einer Röhre. */
 
@@ -10,13 +13,25 @@ OE.register({
   alias: ["felix", "ralph"],
   title: "fixit.exe",
   desc: "Fenster flicken, Ziegeln ausweichen (Hommage an Fix-It Felix Jr.).",
+  demo: true,
   start(ctx){
     const { bar, body, pad } = ctx.layout();
     body.innerHTML = `<canvas class="app-canvas fx-canvas" style="touch-action:none"></canvas>`;
     const cv = body.querySelector("canvas"), g = cv.getContext("2d");
 
     /* ---------- Spielfeld ---------- */
-    const LW = 160, LH = 208, COLS = 5, FLOORS = 3, TIME = 90;
+    const LW = 160, LH = 208, COLS = 5, FLOORS = 3;
+    /* Stufen: time/lives, dm = Schläge je Fenster, obst = Blumenkästen und Markisen,
+       bv = Fallgeschwindigkeit, drop/drum = Faktor auf die Pausen, rain = Spalten beim
+       Wutanfall, again = Doppelwurf, rebreak = wie oft er Geflicktes zerdeppert, run = Lauftempo */
+    const CFG = {
+      leicht: { time: 120, lives: 5, dm: [2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], obst: false, bv: 46, drop: 2, drum: 1.6, rain: 1, again: 0, rebreak: 0, run: 0.7, pie: [12, 40] },
+      normal: { time: 90, lives: 3, dm: [3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1], obst: true, bv: 84, drop: 1, drum: 1, rain: 3, again: .5, rebreak: 5, run: 1, pie: [22, 54] },
+      schwer: { time: 75, lives: 3, dm: [3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 1], obst: true, bv: 104, drop: .7, drum: .8, rain: 3, again: .8, rebreak: 8, run: 1.25, pie: [30] },
+    };
+    const lv = ctx.levels();
+    let CF = CFG[ctx.demo ? "normal" : lv.value], TIME = CF.time, HITS = 30;
+    const bestKey = () => "fixit.best" + (CF === CFG.normal ? "" : CF === CFG.leicht ? ".leicht" : ".schwer");
     const wx = c => 28 + c * 26;              // Fenstermitte
     const FT = f => 50 + f * 46;              // Oberkante Stockwerk
     const LEDGE = f => FT(f) + 40;            // Sims = Standhöhe der Füße
@@ -24,8 +39,13 @@ OE.register({
     const DOOR = { c: 2, f: 2 };
     // Hindernisse: Blumenkästen sperren den Sims zwischen Spalte b und b+1,
     // Markisen den Sprung zwischen Stock f-1 und f in Spalte c
-    const POTS = [{ f: 0, b: 1 }, { f: 1, b: 3 }, { f: 2, b: 0 }];
-    const AWN = [{ f: 1, c: 1 }, { f: 2, c: 4 }];
+    // leicht: keine Hindernisse (siehe obstacles())
+    let POTS = [], AWN = [];
+    const obstacles = () => {
+      POTS = CF.obst ? [{ f: 0, b: 1 }, { f: 1, b: 3 }, { f: 2, b: 0 }] : [];
+      AWN = CF.obst ? [{ f: 1, c: 1 }, { f: 2, c: 4 }] : [];
+    };
+    obstacles();
     const blockedH = (f, a, c) => POTS.some(p => p.f === f && p.b === Math.min(a, c));
     const blockedV = (c, a, f) => AWN.some(w => w.c === c && w.f === Math.max(a, f));
     const DIRS = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
@@ -302,7 +322,9 @@ OE.register({
         P(bx, 178, w, 10, "#1f5a2c");
         for (let k = 0; k < 9; k++) P(bx + Math.floor(r() * (w - 3)), 176 + Math.floor(r() * 8), 3, 3, r() < .5 ? "#2f8a3e" : "#3ea04a");
       }
-      // Hindernisse (Vordergrund)
+      renderFG();
+    }
+    function renderFG(){   // Hindernisse (Vordergrund), je nach Stufe
       const y = fg.getContext("2d");
       y.clearRect(0, 0, LW, LH);
       for (const p of POTS) y.drawImage(POT, wx(p.b) + 13 - 4, LEDGE(p.f) - 9);
@@ -370,10 +392,12 @@ OE.register({
     /* ---------- Zustand ---------- */
     let state = "title", T = 0, clock = 0, paused = false;
     let windows = [], player, riese, bricks = [], parts = [], pops = [], walkers = [], roofies = [];
-    let pie = null, pieAt = [], score = 0, shown = 0, lives = 3, timeLeft = TIME, elapsed = 0, rebreaks = 0;
+    let pie = null, pieAt = [], score = 0, shown = 0, lives = CF.lives, timeLeft = TIME, elapsed = 0, rebreaks = 0;
     let shakeT = 0, shakeA = 0, flashT = 0, flashC = "#fff", lastTick = 0, credit = 0, result = null, medalT = -1;
-    let best = +ctx.store.get("fixit.best", 0) || 0;
+    let best = +ctx.store.get(bestKey(), 0) || 0;
     let god = false;
+    // Vorführung: Intro im Zeitraffer, Fritz spielt selbst, Torte kommt früh
+    const IT = ctx.demo ? 0.28 : 1;
     const clouds = [{ x: 40, y: 12, w: 22 }, { x: 110, y: 20, w: 16 }].map(c => {
       const img = mk(c.w, 6), x = img.getContext("2d");
       x.fillStyle = "#2a1858"; x.fillRect(2, 2, c.w - 4, 3); x.fillRect(5, 0, c.w / 2, 3); x.fillRect(0, 4, c.w, 2);
@@ -390,20 +414,21 @@ OE.register({
         w.img = renderWindow(w);
         windows.push(w);
       }
-      // alle 14 Fenster kaputt, 30 Hammerschläge insgesamt
-      const dm = shuffle([3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1]);
+      // alle 14 Fenster kaputt, normal 30 Hammerschläge insgesamt
+      const dm = shuffle(CF.dm.slice());
+      HITS = dm.reduce((a, v) => a + v, 0);
       shuffle(windows.slice()).slice(0, dm.length).forEach((w, i) => { w.goal = dm[i]; });
       player = { c: DOOR.c, f: DOOR.f, x: wx(DOOR.c), y: LEDGE(DOOR.f), mv: null, face: 1, swing: null, stun: 0, inv: 0, gold: 0, queue: null, bump: null, fall: null, walkT: 0 };
-      riese = { x: 80, y: ROOF, tx: 80, act: "walk", t: 0, walk: 0, drumCd: 6, dropCd: 2, rain: [], speed: 30, vx: 0, vy: 0 };
+      riese = { x: 80, y: ROOF, tx: 80, act: "walk", t: 0, walk: 0, drumCd: 6 * CF.drum, dropCd: 2 * CF.drop, rain: [], speed: 30, vx: 0, vy: 0 };
       bricks = []; parts = []; pops = []; walkers = []; roofies = [];
-      pie = null; pieAt = [22, 54]; score = 0; shown = 0; lives = 3; timeLeft = TIME; elapsed = 0; rebreaks = 0;
+      pie = null; pieAt = CF.pie.slice(); score = 0; shown = 0; lives = CF.lives; timeLeft = TIME; elapsed = 0; rebreaks = 0;
       result = null; medalT = -1; lastTick = 0;
     }
     const broken = () => windows.filter(w => w.dmg > 0).length;
     const winAt = (c, f) => windows.find(w => w.c === c && w.f === f);
     const prog = () => {
       const left = windows.reduce((s, w) => s + w.dmg, 0);
-      return Math.max(1 - left / 30, elapsed / TIME);
+      return Math.max(1 - left / HITS, elapsed / TIME);
     };
 
     /* ---------- Töne (8-Bit über ctx.beep) ---------- */
@@ -524,7 +549,8 @@ OE.register({
       if (state === "run" && !busy()){
         const q = p.queue; p.queue = null;
         if (q) act(q);
-        else { const d = heldDir(); if (d) act(d); else if (hamHeld()) act("ham"); }
+        else if (ctx.demo){ const d = aiAct(); if (d) act(d); }
+      else { const d = heldDir(); if (d) act(d); else if (hamHeld()) act("ham"); }
       }
       if (pie && !p.mv && p.c === pie.c && p.f === pie.f){
         score += 500; p.gold = 6; SND.pie();
@@ -534,12 +560,55 @@ OE.register({
       }
     }
 
+    /* ---------- Vorführ-KI: Ziegeln ausweichen, Torte holen, nächstes kaputtes Fenster ---------- */
+    // Gefahr in Spalte c: fallender Ziegel über Kopfhöhe oder angekündigter Ziegelregen
+    function danger(c){
+      const X = wx(c), top = player.y - 15;
+      if (player.gold > 0) return false;
+      if (riese.rain.some(q => Math.abs(q.x - X) < 10 && q.t < .9)) return true;
+      return bricks.some(k => !k.dead && Math.abs(k.x - X) < 10 && k.y < top + 4 && (top - k.y) < 26 + Math.max(k.vy, 30) * .55);
+    }
+    // Breitensuche über die Simse (Blumenkästen und Markisen sperren)
+    function path(goal){
+      const key = (c, f) => f * COLS + c, from = new Map([[key(player.c, player.f), null]]), q = [[player.c, player.f]];
+      while (q.length){
+        const [c, f] = q.shift();
+        if (goal(c, f)){
+          let k = key(c, f), first = null;
+          while (from.get(k)){ first = from.get(k); k = first.prev; }
+          return first ? first.d : "here";
+        }
+        for (const d of ["left", "right", "up", "down"]){
+          const [dc, df] = DIRS[d], nc = c + dc, nf = f + df;
+          if (nc < 0 || nc >= COLS || nf < 0 || nf >= FLOORS || from.has(key(nc, nf))) continue;
+          if ((dc && blockedH(f, c, nc)) || (df && blockedV(c, f, nf))) continue;
+          from.set(key(nc, nf), { prev: key(c, f), d }); q.push([nc, nf]);
+        }
+      }
+      return null;
+    }
+    function aiAct(){
+      const p = player;
+      if (danger(p.c)){
+        for (const d of shuffle(["left", "right"])){
+          const nc = p.c + DIRS[d][0];
+          if (nc >= 0 && nc < COLS && !blockedH(p.f, p.c, nc) && !danger(nc)) return d;
+        }
+        return null;
+      }
+      const d = pie ? path((c, f) => c === pie.c && f === pie.f) : path((c, f) => { const w = winAt(c, f); return w && w.dmg > 0; });
+      if (!d) return null;
+      if (d === "here") return pie ? null : "ham";
+      if (DIRS[d][0] && danger(p.c + DIRS[d][0])) return null;   // lieber kurz warten
+      return d;
+    }
+
     /* ---------- Riese ---------- */
     function nextTarget(){
       const r = riese;
       const c = Math.random() < .58 ? player.c : Math.floor(Math.random() * COLS);
       r.tx = Math.max(30, Math.min(130, wx(c) + Math.round(rnd(-2, 2))));
-      r.act = "walk"; r.t = 0; r.speed = 32 + 30 * prog();
+      r.act = "walk"; r.t = 0; r.speed = (32 + 30 * prog()) * CF.run;
     }
     function spawnBrick(x, y, vy = 0){ bricks.push({ x, y, vx: 0, vy, rot: 0, dead: false }); }
     function updateRiese(dt){
@@ -552,7 +621,7 @@ OE.register({
         else r.x += Math.sign(d) * st;
         // im Laufen tritt er ab und zu einen Ziegel vom Sims
         if ((r.dropCd -= dt) <= 0){
-          r.dropCd = rnd(1.6, 2.4) - prog();
+          r.dropCd = (rnd(1.6, 2.4) - prog()) * CF.drop;
           spawnBrick(Math.round(r.x), ROOF + 4);
           burst(r.x, ROOF + 2, 5, ["#d2c2a8", "#8a7660"], { sp: 25, gr: 60, life: .35 });
         }
@@ -561,7 +630,7 @@ OE.register({
       } else if (r.act === "throw"){
         if (!r.thrown && r.t >= .38){ r.thrown = true; spawnBrick(r.x, ROOF - 8, 10); SND.throwIt(); }
         if (r.t >= .58){
-          if (Math.random() < prog() * .5){ r.t = 0; r.thrown = false; }   // gern ein zweiter Wurf
+          if (Math.random() < prog() * CF.again){ r.t = 0; r.thrown = false; }   // gern ein zweiter Wurf
           else nextTarget();
         }
       } else if (r.act === "drum"){
@@ -570,9 +639,9 @@ OE.register({
         if (r.t >= 1.15){
           // Wutanfall: Ziegel lösen sich über drei Spalten, mit kurzem Staub als Warnung
           const c = Math.round((r.x - 28) / 26);
-          [c - 1, c, c + 1].filter(k => k >= 0 && k < COLS).forEach((k, i) => r.rain.push({ x: wx(k) + Math.round(rnd(-1, 1)), t: .35 + i * .3, dust: false }));
+          (CF.rain > 1 ? [c - 1, c, c + 1] : [c]).filter(k => k >= 0 && k < COLS).forEach((k, i) => r.rain.push({ x: wx(k) + Math.round(rnd(-1, 1)), t: .35 + i * .3, dust: false }));
           // ab und zu zerdeppert er dabei ein schon geflicktes Fenster
-          if (rebreaks < 5 && prog() > .25 && Math.random() < .8){
+          if (rebreaks < CF.rebreak && prog() > .25 && Math.random() < .8){
             const cand = windows.filter(w => w.dmg === 0 && !(w.c === player.c && w.f === player.f) && Math.abs(wx(w.c) - r.x) < 40);
             if (cand.length){
               const w = pick(cand); w.dmg = 1; w.img = renderWindow(w); rebreaks++;
@@ -580,7 +649,7 @@ OE.register({
               pop(wx(w.c), FT(w.f) + 14, "KLIRR!", "#a8dcff"); SND.crash();
             }
           }
-          r.drumCd = rnd(5.5, 7.5) - 2 * prog();
+          r.drumCd = (rnd(5.5, 7.5) - 2 * prog()) * CF.drum;
           nextTarget();
         }
       }
@@ -594,7 +663,7 @@ OE.register({
       const p = player;
       for (let i = bricks.length - 1; i >= 0; i--){
         const k = bricks[i];
-        k.vy = Math.min(k.vy + 150 * dt, k.dead ? 220 : 84); k.y += k.vy * dt; k.x += k.vx * dt; k.rot += dt;
+        k.vy = Math.min(k.vy + 150 * dt, k.dead ? 220 : CF.bv); k.y += k.vy * dt; k.x += k.vx * dt; k.rot += dt;
         if (k.y > 187){
           burst(k.x, 187, 6, ["#c94a36", "#8e2c20", "#5a4636"], { sp: 40, gr: 260, life: .4, upv: 25 });
           if (k.x > 0 && k.x < LW) SND.land();
@@ -616,10 +685,21 @@ OE.register({
         credit = Math.min(99, credit + 1); SND.coin();
         newGame(); state = "intro"; T = 0; riese.act = "drum"; riese.t = 0; riese.slam = -1;
         const q = shuffle(windows.filter(w => w.goal > 0));
-        q.forEach((w, i) => { w.smashAt = .3 + i * .11; });
+        q.forEach((w, i) => { w.smashAt = (.3 + i * .11) * IT; });
       } else if (state === "pause") resume();
     }
     function pause(){ if (state === "run"){ state = "pause"; } }
+    // Stufe wechseln: nur auf Titel und Ergebnis, danach steht wieder der Titel da
+    const LVY = { title: 136, result: 167 };
+    function setLevel(d = 1){
+      if (ctx.demo || !(state === "title" || (state === "result" && T > .8))) return;
+      const i = lv.names.indexOf(lv.value);
+      CF = CFG[lv.set(lv.names[(i + d + 3) % 3])]; TIME = CF.time;
+      obstacles(); renderFG();
+      best = +ctx.store.get(bestKey(), 0) || 0;
+      newGame(); state = "title"; T = 0;
+      ctx.beep(1100 + i * 200, 40, "square", .04);
+    }
     function resume(){ if (state === "pause"){ state = "run"; } }
 
     function startWin(){
@@ -645,7 +725,7 @@ OE.register({
       score = result.base + result.tb + result.lb;
       result.total = score;
       result.rec = score > best;
-      if (result.rec){ best = score; ctx.store.set("fixit.best", best); }
+      if (result.rec){ best = score; ctx.store.set(bestKey(), best); }
       if (result.win) ctx.log("OK", `fixit: alle Fenster geflickt in ${result.secs} s — score <span class="num">${score}</span>${result.rec ? " <span class=\"dim\">(neuer Rekord)</span>" : ""}`);
       else ctx.log("WARN", `fixit: ${result.reason === "time" ? "Zeit abgelaufen" : "keine Leben mehr"} — ${broken()} Fenster kaputt, score <span class="num">${score}</span>`);
     }
@@ -675,8 +755,8 @@ OE.register({
             SND.crash(); shake(.1, 1);
           }
         }
-        if (T >= 2.0 && r.act === "drum"){ r.act = "idle"; r.t = 0; }
-        if (T >= 2.9){ state = "run"; T = 0; nextTarget(); riese.tx = wx(player.c); }
+        if (T >= 2.0 * IT && r.act === "drum"){ r.act = "idle"; r.t = 0; }
+        if (T >= 2.9 * IT){ state = "run"; T = 0; nextTarget(); riese.tx = wx(player.c); }
       } else if (state === "run"){
         elapsed += dt; timeLeft = Math.max(0, timeLeft - dt);
         const sec = Math.ceil(timeLeft);
@@ -920,13 +1000,14 @@ OE.register({
       text("JR.", 146, 77, "#ffe45a", { align: "right" });
       text("GEGEN ABRISS-ATZE", 80, 88, "#ff7a6a", { align: "center" });
       b.drawImage(FR.stand[0], 16, 100); b.drawImage(HAM_D, 25, 107);
-      text("FLICK ALLE FENSTER", 88, 101, "#ffffff", { align: "center" });
-      text("IN 90 SEKUNDEN!", 88, 110, "#ffe45a", { align: "center" });
+      text("FLICK ALLE FENSTER", 88, 99, "#ffffff", { align: "center" });
+      text(`IN ${TIME} SEKUNDEN!`, 88, 108, "#ffe45a", { align: "center" });
       const ph = Math.floor(clock / .8) % 2;
-      if (Math.floor(clock * 3) % 3) text(ph ? "INSERT COIN" : "PRESS START", 80, 124, ph ? "#5ae8ff" : "#ffffff", { sc: 2, align: "center" });
-      text("HI-SCORE " + pad6(best), 80, 144, "#5ae8ff", { align: "center" });
-      text(ctx.touch ? "KREUZ = LAUFEN" : "←→↑↓ = LAUFEN", 80, 155, "#b8a8e8", { align: "center" });
-      text(ctx.touch ? "HAMMER = FLICKEN" : "LEER = HAMMER", 80, 164, "#b8a8e8", { align: "center" });
+      if (Math.floor(clock * 3) % 3) text(ph ? "INSERT COIN" : "PRESS START", 80, 117, ph ? "#5ae8ff" : "#ffffff", { sc: 2, align: "center" });
+      lvLine(LVY.title);
+      text("HI-SCORE " + pad6(best), 80, 147, "#5ae8ff", { align: "center" });
+      text(ctx.touch ? "KREUZ = LAUFEN" : "←→↑↓ = LAUFEN", 80, 156, "#b8a8e8", { align: "center" });
+      text(ctx.touch ? "HAMMER = FLICKEN" : "LEER = HAMMER", 80, 165, "#b8a8e8", { align: "center" });
       if (Math.floor(clock * 2) % 2) text(ctx.touch ? "TIPPEN = START" : "ENTER = START", 80, 174, "#ffffff", { align: "center" });
       text("CREDIT " + String(credit).padStart(2, "0"), 157, 200, "#8a80c8", { align: "right" });
       text("(C) OEAPP", 3, 200, "#8a80c8");
@@ -950,16 +1031,22 @@ OE.register({
       row(128, "HI-SCORE", pad6(best), "#5ae8ff");
       if (r.rec && T > 1.5 && Math.floor(clock * 4) % 2) text("NEUER REKORD!", 80, 141, GOLD, { align: "center" });
       else if (!r.rec) text(r.win ? `${r.secs} SEKUNDEN` : `${broken()} FENSTER KAPUTT`, 80, 141, "#8a80c8", { align: "center" });
-      if (T > .8 && Math.floor(clock * 2.5) % 2) text(ctx.touch ? "TIPPEN = NOCHMAL" : "ENTER = NOCHMAL", 80, 156, "#ffffff", { align: "center" });
-      if (!ctx.touch) text("ESC = ENDE", 80, 168, "#8a80c8", { align: "center" });
+      if (T > .8 && Math.floor(clock * 2.5) % 2) text(ctx.touch ? "TIPPEN = NOCHMAL" : "ENTER = NOCHMAL", 80, 153, "#ffffff", { align: "center" });
+      if (T > .8) lvLine(LVY.result);
+    }
+    // Stufenzeile mit Rahmen, antippbar (siehe pointerup)
+    function lvLine(y){
+      const t = `STUFE ← ${lv.value.toUpperCase()} →`, w = t.length * 6 + 6;
+      R(80 - w / 2, y - 3, w, 13, "#2a1858"); R(80 - w / 2, y - 3, w, 1, "#ffd23c"); R(80 - w / 2, y + 9, w, 1, "#ffd23c");
+      text(t, 80, y, CF === CFG.leicht ? "#6ad06a" : CF === CFG.schwer ? "#ff7a6a" : "#ffe45a", { align: "center" });
     }
     function draw(){
       drawWorld();
       drawHUD();
       if (state === "title") drawTitle();
       else if (state === "intro"){
-        if (T > .3 && T < 2.0) banner("ATZE IST SAUER!", 112 + (Math.floor(T * 8) % 2), "#ff7a6a", 1);
-        if (T >= 2.0 && Math.floor(T * 6) % 3) banner("LOS GEHT'S!", 110, GOLD);
+        if (T > .3 * IT && T < 2.0 * IT) banner("ATZE IST SAUER!", 112 + (Math.floor(T * 8) % 2), "#ff7a6a", 1);
+        if (T >= 2.0 * IT && Math.floor(T * 6 / IT) % 3) banner("LOS GEHT'S!", 110, GOLD);
       } else if (state === "pause"){
         b.globalAlpha = .65; R(0, 0, LW, LH, "#000"); b.globalAlpha = 1;
         banner("PAUSE", 96, "#ffffff");
@@ -979,6 +1066,7 @@ OE.register({
 
     function updBar(){
       const html = `<span>fenster kaputt <b>${state === "title" ? "–" : broken()}</b></span><span>rekord <b>${best}</b></span>
+        <span class="fx-lv" style="cursor:pointer">stufe <b>${ctx.demo ? "normal" : lv.value}</b></span>
         <span class="right">${ctx.touch ? "" : "←→↑↓ · LEER = hammer · "}P = pause</span>`;
       if (html !== bar._h){ bar._h = html; bar.innerHTML = html; }
     }
@@ -998,11 +1086,15 @@ OE.register({
       moved = true; sx = e.clientX; sy = e.clientY;
       act(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
     });
-    cv.addEventListener("pointerup", () => {
+    cv.addEventListener("pointerup", e => {
       if (!down) return; down = false;
       if (moved || Date.now() - st > 500) return;
+      // Tipp auf die Stufenzeile = Stufe wechseln (in Spielpixeln gerechnet)
+      const r = cv.getBoundingClientRect(), ly = (e.clientY - r.top) / r.height * LH, y0 = LVY[state];
+      if (y0 && ly > y0 - 8 && ly < y0 + 14){ setLevel(1); return; }
       if (state === "run") act("ham"); else begin();
     });
+    bar.addEventListener("click", e => { if (e.target.closest(".fx-lv")) setLevel(1); });
     cv.addEventListener("pointercancel", () => { down = false; });
 
     const onBlur = () => pause();
@@ -1019,6 +1111,7 @@ OE.register({
 
     newGame();
     size();
+    if (ctx.demo){ god = true; begin(); pieAt = [2.2]; }
     ctx.loop(ms => {
       const dt = Math.min(ms, 50) / 1000;
       update(dt);
@@ -1044,6 +1137,8 @@ OE.register({
         const k = e.key;
         const map = { ArrowLeft: "left", a: "left", A: "left", ArrowRight: "right", d: "right", D: "right",
           ArrowUp: "up", w: "up", W: "up", ArrowDown: "down", s: "down", S: "down" };
+        if ((state === "title" || state === "result") && (k === "ArrowLeft" || k === "ArrowRight")){ setLevel(k === "ArrowLeft" ? -1 : 1); return true; }
+        if (k === "l" || k === "L"){ setLevel(1); return true; }
         if (map[k]){ if (!e.repeat) act(map[k]); return true; }
         if (k === " " || k === "x" || k === "X"){
           if (state === "run"){ if (!e.repeat) act("ham"); }

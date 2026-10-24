@@ -4,18 +4,30 @@
    Segment füllt seinen Boden über die volle Breite, dadurch verdecken nähere
    Kuppen automatisch alles dahinter – auch Palmen, Laternen und Gegner.
    Checkpoints bringen Zeit. Ein Rennen geht über zwei Runden bis ins Ziel,
-   danach wartet Stage 2 bei Nacht. Alles ist Canvas-Code, keine Bilddateien. */
+   danach wartet Stage 2 bei Nacht. Alles ist Canvas-Code, keine Bilddateien.
+   Stufen: leicht (viel Zeit, wenig Verkehr, Rempler bremsen nur kurz), normal,
+   schwer (knappere Zeit, dichter Verkehr). L oder Knopf auf Start-/Endbildschirm. */
 
 OE.register({
   id: "race",
   alias: ["racer", "drive"],
   title: "race.exe",
   desc: "Autorennen in Pseudo-3D. Zwei Stages, Checkpoints, Ziel auf Zeit.",
+  demo: true,
   start(ctx){
     const SEG = 200, ROAD = 2000, CAM_H = 1000, FOV = 100;
     const DEPTH = 1 / Math.tan((FOV / 2) * Math.PI / 180);
     const MAX = SEG * 60, ACC = MAX / 5, BRAKE = -MAX, DECEL = -MAX / 5, OFF_DECEL = -MAX / 2, OFF_MAX = MAX / 4;
-    const LIMIT = 90;                       // harte Obergrenze je Stage in Sekunden
+    let LIMIT = 90;                         // harte Obergrenze je Stage in Sekunden
+    /* Stufen: Zeit (Start, Bonus, Obergrenze), Verkehr als Faktor, wie stark Auffahren
+       und Hindernisse bremsen (Anteil vom Tempo, der bleibt) */
+    const LV = {
+      leicht: { t0: 80, bonus: 25, limit: 120, cars: 0.35, bump: 0.8, hit: 0.65 },
+      normal: { t0: 0, bonus: 0, limit: 90, cars: 1, bump: 0, hit: 0.25 },
+      schwer: { t0: -3, bonus: -3, limit: 80, cars: 1.4, bump: 0, hit: 0.2 },
+    };
+    const lvs = ctx.levels();
+    let lv = ctx.demo ? "normal" : lvs.value, LC = LV[lv];
     // Stages: Runden, Segmente pro Runde, Startzeit, Bonus je Checkpoint, Verkehr, Kurven, Hügel,
     // Wertung (Sekunden für S/A/B, langsamer = C). Startzeit + 3 Boni bleibt unter LIMIT.
     const STAGES = [
@@ -262,20 +274,23 @@ OE.register({
     let skyOff = 0, sunDrift = 0, steerVis = 0, passed = 0, cpCount = 0, vmax = 0, gasOn = false, braking = false;
     let gear = 1, rpm = 0.12;
     // Bestzeiten in Sekunden: Stage 1, Stage 2, beide zusammen (0 = noch keine)
-    const best = ["race.t1", "race.t2", "race.tot"].map(k => +ctx.store.get(k, 0) || 0);
-    let muted = !!ctx.store.get("race.mute", false);
-    let police = !!ctx.store.get("race.police", false);
+    // je Stufe getrennt, normal behält die alten Schlüssel
+    const bestKeys = () => ["race.t1", "race.t2", "race.tot"].map(k => lv === "normal" ? k : k + "." + lv);
+    const best = bestKeys().map(k => +ctx.store.get(k, 0) || 0);
+    let muted = ctx.demo || !!ctx.store.get("race.mute", false);
+    let police = !ctx.demo && !!ctx.store.get("race.police", false);
     let cop = null, caughtT = 0, squeal = 0, horn = false;   // Polizeiauto, Banner "angehalten", Quietschen 0..1, Hupe gedrückt
     const parts = [];   // Funken und Staub
 
     function reset(){
       pos = LEN - SEG * 14;   // kurz vor dem Starttor
-      px = 0; speed = 0; time = ST.t0; dist = 0; raceT = 0; shake = 0; flash = 0; checkFlash = 0; goT = 0; hitCool = 0;
+      LIMIT = LC.limit;
+      px = 0; speed = 0; time = LC.t0 > 0 ? LC.t0 : ST.t0 + LC.t0; dist = 0; raceT = 0; shake = 0; flash = 0; checkFlash = 0; goT = 0; hitCool = 0;
       passed = 0; cpCount = 0; vmax = 0; steerVis = 0; sunDrift = 0; gear = 1; rpm = 0.12;
       lastSeg = segAt(pos + PLAYER_Z).i;
       startGap = LEN - (pos + PLAYER_Z) % LEN; goal = startGap + ST.laps * LEN;
       parts.length = 0;
-      const nc = ST.cars, fast = ST.night ? 0.5 : 0.4;
+      const nc = Math.round(ST.cars * LC.cars), fast = ST.night ? 0.5 : 0.4;
       cars = Array.from({ length: nc }, (_, i) => {
         const col = COLS[i % COLS.length], c3 = hex(col);
         return {
@@ -295,15 +310,16 @@ OE.register({
 
     // Zeit als m:ss.s
     const fmtT = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
+    const bonus = () => ST.bonus + LC.bonus;
     const lapNo = () => dist < startGap ? 1 : Math.min(ST.laps, Math.floor((dist - startGap) / LEN) + 1);
     const rankOf = (t, lim) => RANKS[lim.findIndex(v => t <= v) < 0 ? 3 : lim.findIndex(v => t <= v)];
 
     let barKey = "";
     function updBar(){
-      const key = best + "|" + muted + "|" + police;
+      const key = best + "|" + muted + "|" + police + "|" + lv;
       if (key === barKey) return;
       barKey = key;
-      bar.innerHTML = `<span>bestzeit <b>${best[0] ? fmtT(best[0]) : "–"}</b>${best[2] ? ` · gesamt <b>${fmtT(best[2])}</b>` : ""}</span>
+      bar.innerHTML = `<span data-level style="cursor:pointer">stufe <b>${lv}</b>${ctx.touch ? "" : " (L)"}</span><span>bestzeit <b>${best[0] ? fmtT(best[0]) : "–"}</b>${best[2] ? ` · gesamt <b>${fmtT(best[2])}</b>` : ""}</span>
         <span data-mute style="cursor:pointer">ton <b>${muted ? "aus" : "an"}</b>${ctx.touch ? "" : " (M)"}</span>
         <span data-police style="cursor:pointer">polizei <b style="color:${police ? "#7ab8ff" : ""}">${police ? "an" : "aus"}</b>${ctx.touch ? "" : " (C)"}</span>
         <span class="right">${ctx.touch ? "▼ bremst · HUP hupt · ⏯ pause" : "↑ gas · ↓ bremse · ← → lenken · H hupe · P pause"}</span>`;
@@ -311,6 +327,7 @@ OE.register({
     bar.addEventListener("click", e => {
       if (e.target.closest("[data-mute]")) toggleMute();
       if (e.target.closest("[data-police]")) togglePolice();
+      if (e.target.closest("[data-level]")) setLevel();
     });
     function togglePolice(){
       police = !police; ctx.store.set("race.police", police);
@@ -477,8 +494,39 @@ OE.register({
     }
 
     /* ---------- Spiellogik ---------- */
+    /* ---------- Vorführung: Vollgas, Spur wählen, an Verkehr vorbei ---------- */
+    const LANE = [-0.62, 0, 0.62];
+    let aiLane = 1;
+    function pilot(){
+      const k = new Set(["ArrowUp"]), me = pos + PLAYER_Z;
+      // freie Strecke je Spur: Abstand zum nächsten Auto vor uns, das in der Spur fährt
+      const room = LANE.map(o => {
+        let gap = LEN;
+        for (const c of cars){
+          const d = ((c.z - me) % LEN + LEN) % LEN;
+          if (d < SEG * 60 && Math.abs(c.off - o) < CAR * 2 + 0.08) gap = Math.min(gap, d);
+        }
+        return gap;
+      });
+      // neben uns (knapp hinter bis knapp vor) darf keiner sein, sonst kein Wechsel
+      const side = o => cars.some(c => { const d = ((c.z - me) % LEN + LEN) % LEN; return (d < SEG * 3 || d > LEN - SEG * 2) && Math.abs(c.off - o) < CAR * 2 + 0.04; });
+      if (room[aiLane] < SEG * 28){
+        let pickL = aiLane;
+        for (const l of [aiLane - 1, aiLane + 1].sort(() => Math.random() - 0.5)){
+          if (l < 0 || l > 2 || side(LANE[l]) || (l !== aiLane && Math.abs(l - aiLane) > 1)) continue;
+          if (room[l] > room[pickL] + SEG * 4) pickL = l;
+        }
+        aiLane = pickL;
+        if (room[aiLane] < SEG * 8 && speed > MAX * 0.5) k.delete("ArrowUp");   // eng: Gas weg
+      }
+      // lenken mit etwas Vorhalt gegen die Fliehkraft
+      const seg = segAt(me), err = LANE[aiLane] - px + seg.curve * 0.01 * (speed / MAX);
+      if (err > 0.05) k.add("ArrowRight"); else if (err < -0.05) k.add("ArrowLeft");
+      return k;
+    }
+
     function update(dt){
-      const k = ctx.keys, auto = state === "finish";   // nach dem Ziel rollt das Auto von allein aus
+      const k = ctx.demo ? pilot() : ctx.keys, auto = state === "finish";   // nach dem Ziel rollt das Auto von allein aus
       const gas = !auto && (k.has("ArrowUp") || k.has("w") || (ctx.touch && !k.has("ArrowDown")));
       const brake = !auto && (k.has("ArrowDown") || k.has("s"));
       const left = !auto && (k.has("ArrowLeft") || k.has("a")), right = !auto && (k.has("ArrowRight") || k.has("d"));
@@ -520,7 +568,7 @@ OE.register({
           for (const sg of [seg, prev]) if (sg.sp) for (const sp of sg.sp){
             const hw = SOLID[sp.kind];
             if (hw && Math.abs(px - sp.off) < CAR + hw){
-              crash(Math.min(1, ratio * 3)); speed *= 0.25; px += px > sp.off ? 0.08 : -0.08;
+              crash(Math.min(1, ratio * (LC.bump ? 1 : 3))); speed *= LC.hit; px += px > sp.off ? 0.08 : -0.08;
               sfx(90, 160, "sawtooth", 0.06);
               break;
             }
@@ -541,7 +589,8 @@ OE.register({
         c.ahead = ahead;
         if (gap < SEG * 1.2 && Math.abs(c.off - px) < CAR * 2 && speed > c.speed){
           const hard = (speed - c.speed) / MAX;
-          speed = c.speed * 0.6;
+          speed = LC.bump ? Math.max(c.speed, speed * LC.bump) : c.speed * 0.6;   // leicht: nur kurz gebremst
+          if (LC.bump) c.offT = clamp(c.off + (c.off > px ? 0.62 : -0.62), -0.7, 0.7);   // und der andere weicht aus
           if (hitCool <= 0){ crash(Math.min(1, hard * 2.5)); sfx(110, 220, "square", 0.06); }
         }
       }
@@ -575,7 +624,7 @@ OE.register({
       for (let j = lastSeg, guard = 0; j !== si && guard < 64; guard++){
         j = (j + 1) % N;
         if (segs[j].cp && dist > SEG * 30 && dist < goal - SEG * 5 && !auto){   // Starttor zählt erst nach einer Runde, das Ziel gar nicht
-          time += ST.bonus; checkFlash = 1.8; cpCount++;
+          time += bonus(); checkFlash = 1.8; cpCount++;
           cpText = j === 0 ? (lapNo() === ST.laps ? "LETZTE RUNDE" : `RUNDE ${lapNo()}`) : "CHECKPOINT";
           sfx(988, 90); ctx.after(110, () => sfx(1318, 160));
           ctx.log("OK", `race: ${cpText.toLowerCase()} — <span class="num">${fmtT(raceT)}</span>`);
@@ -607,6 +656,7 @@ OE.register({
     // Knöpfe im Overlay (für Maus und Finger); ohne Leerraum dazwischen, das Overlay ist white-space:pre
     const btn = (act, label, main) => `<button type="button" data-act="${act}" style="font:inherit;font-size:14px;letter-spacing:.12em;cursor:pointer;padding:9px 16px;margin:4px;background:rgba(0,16,6,.85);color:${main ? C.amber : C.pale};border:1px solid ${main ? C.amber : C.dim};box-shadow:0 0 10px ${main ? "rgba(255,180,84,.35)" : "transparent"}">${label}</button>`;
     const btns = (...b) => `<div style="margin-top:12px;white-space:normal">${b.join("")}</div>`;
+    const lvBtn = () => btn("lvl", `STUFE ‹ ${lv.toUpperCase()} ›`);
     const keyHint = s2 => ctx.touch ? "" : `<div style="color:${C.dim};margin-top:2px">${s2} · ESC = exit</div>`;
 
     function over(){
@@ -620,7 +670,7 @@ OE.register({
         <div style="color:${C.pale}">${Math.floor(done * 100)} % geschafft · Runde ${lapNo()}/${ST.laps}</div>
         <div style="color:${C.dim}">${cpCount} Checkpoint${cpCount === 1 ? "" : "s"} · ${passed} überholt · Spitze ${vmax} km/h</div>
         ${stage ? `<div style="color:${C.dim}">Stage 1 bleibt gewertet: ${fmtT(lastT[0])}</div>` : ""}
-        ${btns(btn("again", "↻ NOCHMAL", true), stage ? btn("s1", "VON VORN") : "")}
+        ${btns(btn("again", "↻ NOCHMAL", true), stage ? btn("s1", "VON VORN") : "", lvBtn())}
         ${keyHint(stage ? "ENTER = nochmal · R = von vorn" : "ENTER = nochmal")}`);
     }
 
@@ -630,11 +680,11 @@ OE.register({
       state = "finish"; finAt = clock; checkFlash = 0;
       const t = +raceT.toFixed(1); lastT[stage] = t;
       const rec = !best[stage] || t < best[stage];
-      if (rec){ best[stage] = t; ctx.store.set(["race.t1", "race.t2"][stage], t); }
+      if (rec){ best[stage] = t; ctx.store.set(bestKeys()[stage], t); }
       let tot = 0, recTot = false;
       if (stage === 1 && lastT[0]){
         tot = +(lastT[0] + t).toFixed(1); recTot = !best[2] || tot < best[2];
-        if (recTot){ best[2] = tot; ctx.store.set("race.tot", tot); }
+        if (recTot){ best[2] = tot; ctx.store.set(bestKeys()[2], tot); }
       }
       res = { t, rec, tot, recTot, rest: Math.max(0, time) };
       updBar();
@@ -664,7 +714,7 @@ OE.register({
           <div style="margin-top:6px">Wertung <b style="font-size:22px;${glow(C.amber)}">${rk}</b> <span style="color:${C.pale}">${rname}</span></div>
           ${stats}
           <div style="color:#7ab8ff;margin-top:6px">als Nächstes: STAGE 2 · NIGHT CITY</div>
-          ${btns(btn("next", "STAGE 2 ▸", true), btn("again", "↻ NOCHMAL"))}
+          ${btns(btn("next", "STAGE 2 ▸", true), btn("again", "↻ NOCHMAL"), lvBtn())}
           ${keyHint("ENTER = Stage 2 · R = nochmal")}`);
       } else {
         const lim = STAGES[0].rank.map((v, i) => v + STAGES[1].rank[i]);
@@ -675,7 +725,7 @@ OE.register({
           <div style="color:${recTot ? C.amber : C.dim}">${recTot ? "★ neue Gesamtbestzeit" : `Bestzeit gesamt ${fmtT(best[2])}`}</div>
           <div style="margin-top:6px">Wertung <b style="font-size:22px;${glow(C.amber)}">${rk2}</b> <span style="color:${C.pale}">${rname2}</span></div>
           ${stats}
-          ${btns(btn("s1", "↻ NOCHMAL", true), btn("again", "STAGE 2 NOCHMAL"))}
+          ${btns(btn("s1", "↻ NOCHMAL", true), btn("again", "STAGE 2 NOCHMAL"), lvBtn())}
           ${keyHint("ENTER = nochmal · 2 = Stage 2 nochmal")}`);
       }
     }
@@ -1055,7 +1105,7 @@ OE.register({
         const fs = Math.max(18, Math.min(w / 16, 40));
         g.globalAlpha = Math.min(1, checkFlash * 1.5);
         txt(cpText, w / 2, h * 0.3, fs, C.amber, "center", 700, 16);
-        txt(`+${ST.bonus} s`, w / 2, h * 0.3 + fs * 1.1, fs * 0.8, C.bright, "center", 600, 10);
+        txt(`+${bonus()} s`, w / 2, h * 0.3 + fs * 1.1, fs * 0.8, C.bright, "center", 600, 10);
       }
       if (state === "finish"){   // Zieleinlauf: ZIEL! wächst ein, Fahnen wehen, Zeit darunter
         const t = clock - finAt, fs = Math.max(34, Math.min(w / 7, h * 0.2)) * Math.min(1, 0.4 + t * 2.5);
@@ -1163,9 +1213,21 @@ OE.register({
     }
     // Knöpfe und ENTER: next = Stage 2, again = Stage wiederholen, s1 = von vorn
     function act(a){
+      if (a === "lvl") return setLevel();
+      if (a === "go") a = "s1";
       if (!canRestart()) return;
       if (a === "next" && !(state === "done" && stage === 0)) a = "again";
       startRace(a === "next" ? 1 : a === "s1" ? 0 : stage);
+    }
+    // Stufe nur auf Start- und Endbildschirmen; danach wieder der Start (Stage 1)
+    function setLevel(){
+      if (ctx.demo || !canRestart()) return;
+      lv = lvs.next(); LC = LV[lv];
+      bestKeys().forEach((k, i) => { best[i] = +ctx.store.get(k, 0) || 0; });
+      lastT = [0, 0];
+      if (stage) setStage(0);
+      reset(); state = "ready"; updBar(); title();
+      sfx(lv === "leicht" ? 660 : lv === "normal" ? 880 : 1100, 60, "square", 0.04);
     }
     const enterAct = () => state === "done" ? (stage === 0 ? "next" : "s1") : state === "ready" ? "s1" : "again";
     function pause(){
@@ -1230,17 +1292,30 @@ OE.register({
     build(); palette();
     reset();
     updBar();
-    const sub = `color:${C.dim}`;
-    overlay(`<div class="big" style="font-size:30px;letter-spacing:.5em;color:${C.bright};text-shadow:0 0 14px ${C.green}">RACE</div>
-      <div style="color:${C.amber}">2 Runden bis ins Ziel · Checkpoint = +${ST.bonus} s</div>
-      <div style="color:${C.pale}">danach STAGE 2 bei Nacht</div>
-      <div style="${sub}">${ctx.touch ? "Gas geht von allein · ▼ bremst" : "← → lenken · ↑ gas · ↓ bremse"}</div>
-      <div style="${sub}">${ctx.touch ? "◀ ▶ lenken · HUP hupt · ⏯ pause" : "H hupe · P pause · M ton · Q exit"}</div>
-      <div style="color:#7ab8ff">Polizei ${police ? "ist an" : "zuschalten"}: ${ctx.touch ? "oben auf „polizei“ tippen" : "Taste C"}</div>
-      <div style="margin-top:10px">${ctx.touch ? "tippen zum Start" : "ENTER = start"}</div>`);
+    function title(){
+      const sub = `color:${C.dim}`;
+      overlay(`<div class="big" style="font-size:30px;letter-spacing:.5em;color:${C.bright};text-shadow:0 0 14px ${C.green}">RACE</div>
+        <div style="color:${C.amber}">2 Runden bis ins Ziel · Checkpoint = +${bonus()} s</div>
+        <div style="color:${C.pale}">${lv === "leicht" ? "viel Zeit, wenig Verkehr · danach STAGE 2 bei Nacht" : "danach STAGE 2 bei Nacht"}</div>
+        <div style="${sub}">${ctx.touch ? "Gas geht von allein · ▼ bremst" : "← → lenken · ↑ gas · ↓ bremse"}</div>
+        <div style="${sub}">${ctx.touch ? "◀ ▶ lenken · HUP hupt · ⏯ pause" : "H hupe · P pause · M ton · Q exit"}</div>
+        <div style="color:#7ab8ff">Polizei ${police ? "ist an" : "zuschalten"}: ${ctx.touch ? "oben auf „polizei“ tippen" : "Taste C"}</div>
+        ${btns(btn("go", "▸ START", true), lvBtn())}
+        ${keyHint("ENTER = start · L = stufe")}`);
+    }
+    if (ctx.demo){   // Vorführung: kein Titel, kein Countdown – fliegender Start
+      state = "running"; speed = MAX * 0.7; gear = 4; rpm = 0.6;
+    } else title();
+
+    // nur zum Testen: race --debug
+    if (ctx.args.includes("--debug")) window.OE_RACE = {
+      get s(){ return { state, stage, lv, px, speed: speed / MAX, time, raceT, dist, goal, curve: segAt(pos + PLAYER_Z).curve,
+        cars: cars.map(c => ({ gap: ((c.z - (pos + PLAYER_Z)) % LEN + LEN) % LEN / SEG, off: c.off })) }; },
+    };
 
     return {
       stop(){
+        delete window.OE_RACE;
         removeEventListener("resize", onResize);
         document.removeEventListener("visibilitychange", onVis);
         if (ro) ro.disconnect();
@@ -1255,6 +1330,7 @@ OE.register({
         if (k === "p" || k === "P"){ if (state === "paused") resume(); else pause(); return true; }
         if (k === "m" || k === "M"){ toggleMute(); return true; }
         if (k === "c" || k === "C"){ togglePolice(); return true; }
+        if (k === "l" || k === "L"){ setLevel(); return true; }
         if (k === "h" || k === "H") return true;   // Hupe läuft über ctx.keys (gedrückt halten)
         if (k === "q"){ ctx.exit(); return true; }
         return ["w", "a", "s", "d"].includes(k.toLowerCase());

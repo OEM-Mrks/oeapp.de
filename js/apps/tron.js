@@ -5,15 +5,18 @@
    Gelenkt wird mit zwei Flächen: linke = abbiegen aus Sicht des Fahrers nach
    links, rechte = nach rechts. Fährt das Rad nach unten, tauschen die beiden
    still ihre Funktion, damit die linke Fläche auch dann zum linken Bildrand führt.
-   Drei Stufen (langsam / normal / schnell): ändern Tempo und wie weit die Gegner
-   vorausdenken. Wahl auf dem Startbildschirm mit 1/2/3, S oder ↑↓, per Tippen auf
-   die Stufe oder mit tron --langsam / --schnell. Rekord je Stufe getrennt. */
+   Drei Stufen (leicht / normal / schwer): ändern Tempo und wie weit die Gegner
+   vorausdenken. Auf leicht fahren sie langsam und unvorsichtig, nach drei
+   gewonnenen Runden ist das Raster befreit. Wahl auf dem Startbildschirm mit
+   1/2/3, S oder ↑↓, per Tippen auf die Stufe oder mit tron --leicht / --schwer
+   (alt: --langsam / --schnell). Rekord je Stufe getrennt. */
 
 OE.register({
   id: "tron",
   alias: ["lightcycle", "lichtrad"],
   title: "tron.exe",
   desc: "Lichtrad-Duell: nicht in die Wände fahren (Tron, 1982).",
+  demo: true,
   start(ctx){
     const { bar, body, pad } = ctx.layout();
     body.innerHTML = `<canvas class="app-canvas" style="touch-action:none"></canvas><div class="app-overlay"></div>`;
@@ -27,25 +30,29 @@ OE.register({
       { name: "RINZ", col: "#ffe45a", glow: "rgba(255,228,90," },
     ];
 
-    // tempo: Faktor aufs Grundtempo; look/noise/aim: wie gründlich die Gegner planen
+    // tempo: Faktor aufs Grundtempo; look/noise/aim: wie gründlich die Gegner planen;
+    // oops: Chance je Schritt, dass ein Gegner blind abbiegt; doze: nach so vielen Sekunden
+    // döst er ein und fährt stur geradeaus; goal: Siege bis zum Gesamtsieg
     const LEVELS = [
-      { id: "langsam", tempo: 0.6,  look: 150, noise: 12, aim: 0.7 },
-      { id: "normal",  tempo: 1,    look: 400, noise: 8,  aim: 1 },
-      { id: "schnell", tempo: 1.35, look: 600, noise: 6,  aim: 1.15 },
+      { id: "leicht", tempo: 0.55, look: 12,  noise: 14, aim: 0,    oops: 0.02, doze: [3, 9], goal: 3 },
+      { id: "normal", tempo: 1,    look: 400, noise: 8,  aim: 1,    oops: 0 },
+      { id: "schwer", tempo: 1.35, look: 600, noise: 6,  aim: 1.15, oops: 0 },
     ];
-    const ARGS = { "--langsam": 0, "--slow": 0, "--normal": 1, "--schnell": 2, "--fast": 2 };
-    let lv = ctx.store.get("tron.level", 1);
-    for (const a of ctx.args) if (a in ARGS) lv = ARGS[a];
-    if (!LEVELS[lv]) lv = 1;
-    ctx.store.set("tron.level", lv);
+    const OLD = { "--langsam": "leicht", "--slow": "leicht", "--schnell": "schwer", "--fast": "schwer" };
+    const lvs = ctx.levels(LEVELS.map(l => l.id));
+    const old = ctx.args.map(a => OLD[a]).find(Boolean);
+    if (old) lvs.set(old);
+    let lv = ctx.demo ? 1 : lvs.index;
     const L = () => LEVELS[lv];
-    // Rekord je Stufe; "normal" behält den alten Schlüssel
-    const bestKey = () => lv === 1 ? "tron.best" : "tron.best." + L().id;
+    // Rekord je Stufe; "normal" und "schwer" (früher "schnell") behalten die alten Schlüssel
+    const bestKey = () => "tron.best" + [".leicht", "", ".schnell"][lv];
 
     let C = 8, cols = 60, rows = 40, w = 0, h = 0, bg = null;
     let occ, bikes, state = "ready", round = 1, wins = 0, losses = 0, acc = 0, rate = 18, clock = 0, flash = 0, endT = 0;
     let best = ctx.store.get(bestKey(), 0);
+    if (ctx.demo) round = 3;   // Vorführung: gleich gegen drei Gegner
     const parts = [];
+    let play = 0;   // Fahrzeit der Runde (ohne Countdown und Pause)
 
     function size(){
       w = body.clientWidth; h = body.clientHeight;
@@ -89,9 +96,9 @@ OE.register({
         { x: Math.floor(cols * 0.8), y: Math.floor(rows / 2), d: 3 },
       ];
       bikes = BIKES.slice(0, n + 1).map((b, i) => ({ ...b, ...starts[i], alive: true, cpu: i > 0, trail: [], next: starts[i].d,
-        wiggle: Math.random() }));
+        wiggle: Math.random(), doze: L().doze ? L().doze[0] + Math.random() * (L().doze[1] - L().doze[0]) : Infinity }));
       for (const k of bikes){ k.trail.push([k.x, k.y]); occ[idx(k.x, k.y)] = 1; }
-      parts.length = 0; acc = 0; flash = 0;
+      parts.length = 0; acc = 0; flash = 0; play = 0;
       rate = (16 + Math.min(8, round)) * L().tempo;   // Felder pro Sekunde, wird mit jeder Runde etwas schneller
     }
 
@@ -112,6 +119,7 @@ OE.register({
       return n;
     }
     function think(k){
+      if (play > k.doze){ k.next = k.d; return; }   // leicht: eingedöst, fährt stur geradeaus
       const me = bikes[0];
       let best = k.d, bestScore = -Infinity;
       for (const turn of [0, -1, 1]){
@@ -132,6 +140,32 @@ OE.register({
         s += (Math.random() - 0.5) * L().noise;   // etwas Unberechenbarkeit
         if (s > bestScore){ bestScore = s; best = d; }
       }
+      // leicht: ab und zu ein Schlenker ohne hinzuschauen (oder stur geradeaus)
+      if (L().oops && play > 1 && Math.random() < L().oops) best = (k.d + [0, -1, 1][ctx.rint(0, 2)] + 4) % 4;
+      k.next = best;
+    }
+    // Vorführung: das eigene Rad plant wie die Gegner (viel Platz, lange Geraden)
+    // und hält auf den nächsten Gegner zu, nur etwas vorsichtiger
+    function pilot(k){
+      const rivals = bikes.filter(b => b.cpu && b.alive);
+      let best = k.d, bestScore = -Infinity;
+      for (const turn of [0, -1, 1]){
+        const d = (k.d + turn + 4) % 4, [dx, dy] = DIRS[d];
+        const nx = k.x + dx, ny = k.y + dy;
+        if (!free(nx, ny)) continue;
+        let s = room(nx, ny, 700) * 10;
+        let run = 0; while (run < 12 && free(nx + dx * run, ny + dy * run)) run++;
+        s += run * 5;
+        let near = null, nd = Infinity;
+        for (const r of rivals){ const q = Math.hypot(r.x - k.x, r.y - k.y); if (q < nd){ nd = q; near = r; } }
+        if (near){
+          const [mx, my] = DIRS[near.d];
+          s -= Math.hypot(near.x + mx * 5 - nx, near.y + my * 5 - ny) * 0.8;
+        }
+        if (turn === 0) s += 8;
+        s += (Math.random() - 0.5) * 4;
+        if (s > bestScore){ bestScore = s; best = d; }
+      }
       k.next = best;
     }
 
@@ -148,6 +182,7 @@ OE.register({
 
     function tick(){
       for (const k of bikes) if (k.alive && k.cpu) think(k);
+      if (ctx.demo && bikes[0].alive) pilot(bikes[0]);
       for (const k of bikes) if (k.alive && !k.cpu){
         if ((k.next + 2) % 4 !== k.d) k.d = k.next;   // keine Kehrtwende in die eigene Wand
       } else if (k.alive) k.d = k.next;
@@ -156,8 +191,18 @@ OE.register({
       bikes.forEach((k, i) => {
         if (!k.alive) return;
         const [nx, ny] = moves[i];
-        const headOn = moves.some((m, j) => j !== i && m && m[0] === nx && m[1] === ny);
-        if (!free(nx, ny) || headOn){ crash(k); return; }
+        // Frontalcrash; auf leicht hat der Spieler Vorfahrt, nur der Gegner fliegt raus
+        const headOn = moves.some((m, j) => j !== i && m && m[0] === nx && m[1] === ny) && !(L().goal && !k.cpu);
+        if (!free(nx, ny) || headOn){
+          if (ctx.demo && !k.cpu){   // Vorführung: Spieler hat einen Schutzengel, wartet notfalls einen Schritt
+            const d = [0, 1, 2, 3].find(d => free(k.x + DIRS[d][0], k.y + DIRS[d][1]) && !moves.some((m, j) => j !== i && m && m[0] === k.x + DIRS[d][0] && m[1] === k.y + DIRS[d][1]));
+            if (d === undefined) return;
+            k.d = k.next = d; moves[i] = [k.x + DIRS[d][0], k.y + DIRS[d][1]];
+            const [ax, ay] = moves[i]; k.trail.push([ax, ay]); k.x = ax; k.y = ay;
+            return;
+          }
+          crash(k); return;
+        }
         const last = k.trail[k.trail.length - 1], prev = k.trail[k.trail.length - 2];
         // gerade Strecken nur verlängern, Knickpunkte speichern
         if (prev && (prev[0] === last[0] && last[0] === nx || prev[1] === last[1] && last[1] === ny)) last[0] = nx, last[1] = ny;
@@ -171,12 +216,18 @@ OE.register({
     function checkEnd(){
       const me = bikes[0], rivals = bikes.slice(1).filter(k => k.alive).length;
       if (me.alive && rivals) return;
+      if (ctx.demo){ newRound(); return; }   // Vorführung: gleich die nächste Runde, ohne Bildschirm
       state = "end"; endT = 0;
       if (me.alive){
         wins++; round++;
         if (wins > best){ best = wins; ctx.store.set(bestKey(), best); }
         ctx.beep(988, 120); ctx.after(140, () => ctx.beep(1318, 260));
         ctx.log("OK", `tron: Runde gewonnen <span class="dim">(${wins} Siege)</span>`);
+        if (L().goal && wins >= L().goal){   // leicht: klares Ende mit Gesamtsieg
+          state = "champ";
+          [784, 988, 1175, 1568].forEach((f, i) => ctx.after(300 + i * 130, () => ctx.beep(f, 160, "square", 0.04)));
+          ctx.log("OK", `tron: Raster befreit <span class="dim">(${wins} Siege, ${L().id})</span>`);
+        }
       } else {
         losses++;
         ctx.log("WARN", `tron: Lichtrad zerstört nach ${wins} Siegen <span class="dim">(${L().id})</span>`);
@@ -195,6 +246,8 @@ OE.register({
         <div>${ctx.touch ? "tippen zum Start" : "ENTER = start"}</div>`);
       else if (state === "end") overlay(`<div class="big" style="color:#5ae8ff">RUNDE GEWONNEN</div><div>Siege ${wins} · weiter mit ${Math.min(3, round)} Gegner${Math.min(3, round) > 1 ? "n" : ""}</div>
         ${pick}<div class="dim">${go} = nächste Runde · stufe wechseln = neue Serie</div>`);
+      else if (state === "champ") overlay(`<div class="big" style="color:#5ae8ff">RASTER BEFREIT!</div><div>${wins} Runden gewonnen · alle Gegner derezzed</div>
+        <div class="dim">bereit für mehr? stufe <b>normal</b> wartet</div>${pick}<div class="dim">${go} = neue Serie · ESC = exit</div>`);
       else if (state === "over") overlay(`<div class="big" style="color:#ff9a3c">DEREZZED</div><div>${wins} ${wins === 1 ? "Sieg" : "Siege"} · Rekord ${best}</div>
         ${pick}<div class="dim">${go} = neues Spiel · ESC = exit</div>`);
       const b = ov.querySelector(".tron-lv");
@@ -205,10 +258,10 @@ OE.register({
     }
     // nur außerhalb der Fahrt; nach einer Runde beginnt dann eine neue Serie (Rekord je Stufe)
     function setLevel(n){
-      if (!["ready", "end", "over"].includes(state)) return false;
+      if (ctx.demo || !["ready", "end", "over", "champ"].includes(state)) return false;
       n = (n + LEVELS.length) % LEVELS.length;
       if (n === lv) return true;
-      lv = n; ctx.store.set("tron.level", lv);
+      lv = n; lvs.set(L().id);
       best = ctx.store.get(bestKey(), 0);
       if (state !== "ready"){ state = "ready"; round = 1; wins = 0; }
       newRound();   // setzt auch das Tempo neu
@@ -268,7 +321,7 @@ OE.register({
       if (flash > 0){ g.fillStyle = `rgba(255,255,255,${flash * 0.5})`; g.fillRect(0, 0, W, H); flash = Math.max(0, flash - dt * 2.5); }
 
       const alive = bikes.slice(1).filter(k => k.alive).length;
-      const html = `<span>runde <b>${round}</b></span><span>siege <b>${wins}</b></span><span>rekord <b>${best}</b></span><span class="tron-bar-lv" style="cursor:pointer">stufe <b>${L().id}</b></span>
+      const html = `<span>runde <b>${round}</b></span><span>siege <b>${wins}</b></span><span>rekord <b>${best}</b></span><span class="tron-bar-lv" style="cursor:pointer">stufe <b>${L().id}</b></span>${L().goal ? `<span>ziel <b>${L().goal}</b> siege</span>` : ""}
         <span>gegner <b>${alive}</b>/${bikes.length - 1}</span><span class="right">P = pause</span>`;
       if (html !== barHtml){ barHtml = html; bar.innerHTML = html; }   // nur bei Änderung, sonst trifft das Antippen ins Leere
     }
@@ -290,7 +343,7 @@ OE.register({
     let lastCount = 0;
     function begin(){
       if (state === "running" || state === "count") return;
-      if (state === "over"){ round = 1; wins = 0; newRound(); }
+      if (state === "over" || state === "champ"){ round = 1; wins = 0; newRound(); }
       else if (state === "end") newRound();
       else if (state === "paused"){ state = "running"; overlay(null); return; }
       state = "count"; endT = 0; lastCount = 0; overlay(null);
@@ -317,7 +370,7 @@ OE.register({
         if (endT >= 1.8){ state = "running"; acc = 0; ctx.beep(880, 220, "square", 0.05); }
       }
       if (state === "running"){
-        acc += Math.min(ms, 100) / 1000;   // Spielzeit: erst ab <10 fps gekappt, sonst unabhängig von der Bildrate
+        acc += Math.min(ms, 100) / 1000; play += dt;   // Spielzeit: erst ab <10 fps gekappt, sonst unabhängig von der Bildrate
         while (acc >= 1 / rate && state === "running"){ acc -= 1 / rate; tick(); }
       }
       draw(dt);
@@ -334,12 +387,18 @@ OE.register({
       { label: "", key: "ArrowLeft", aria: "linke Taste" }, { label: "", key: "ArrowRight", aria: "rechte Taste" },
     ]);
     size();
-    screen();
+    if (ctx.demo){ state = "running"; acc = 0; } else screen();
     // Stufe in der Statuszeile antippen/klicken = wechseln (zwischen den Runden)
     bar.addEventListener("click", e => { if (e.target.closest(".tron-bar-lv")) setLevel(lv + 1); });
 
+    // nur zum Testen: tron --debug
+    if (ctx.args.includes("--debug")) window.OE_TRON = {
+      get s(){ return { state, round, wins, lv: L().id, cols, rows, bikes: bikes.map(k => ({ x: k.x, y: k.y, d: k.d, alive: k.alive })) }; },
+      free: (x, y) => free(x, y),
+    };
+
     return {
-      stop(){ removeEventListener("resize", onResize); },
+      stop(){ removeEventListener("resize", onResize); delete window.OE_TRON; },
       key(e){
         const k = e.key;
         if (["ArrowLeft", "a", "A", "z", "Z"].includes(k)){ press(-1); return true; }

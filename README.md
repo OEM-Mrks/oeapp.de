@@ -18,11 +18,11 @@ live erzeugt, je Spiel ein eigener Track).
 | `blocks`   | Fallende Blöcke (Tetris-artig), Stufen 1 2 3, leicht: 5 Reihen = gewonnen |
 | `pong`     | Tischtennis, Stufen 1 2 3, leicht bis 3 gegen müden Computer (`pong --2p` zu zweit) |
 | `chomp`    | Labyrinth mit vier Geistern (Pac-Man-artig), Stufen 1 2 3, leicht: halbes Feld = gewonnen |
-| `fixit`    | Fenster flicken, Ziegeln ausweichen (Hommage an Fix-It Felix Jr.) |
-| `tron`     | Lichtrad-Duell gegen 1–3 Computergegner (Tron, 1982), Stufen `--langsam`/`--schnell` |
-| `race`     | Pseudo-3D-Autorennen: 2 Runden ins Ziel, Stage 2 bei Nacht, Hupe (H), Polizei (C) |
-| `ttt`      | Tic-Tac-Toe gegen den Computer (3 Stufen) oder `--2p`       |
-| `ssp`      | Schnick, Schnack, Schnuck im Takt gegen eine lernende KI    |
+| `fixit`    | Fenster flicken (Hommage an Fix-It Felix Jr.), Stufen (L), leicht ohne Hindernisse, 120 s, 5 Leben |
+| `tron`     | Lichtrad-Duell (Tron, 1982), Stufen (S), leicht: nach 3 Siegen gewonnen |
+| `race`     | Pseudo-3D-Rennen: 2 Runden ins Ziel, Stage 2 bei Nacht, Stufen (L), leicht: viel Zeit, wenig Verkehr |
+| `ttt`      | Tic-Tac-Toe, leicht/normal/schwer (unschlagbar) oder `--2p`, S wechselt |
+| `ssp`      | Schnick, Schnack, Schnuck gegen lernende KI, Stufen (L), leicht mit Vorsprung |
 | `dilemma`  | Gefangenendilemma: Verhör über viele Runden, `--turnier` (Axelrod) |
 | `pille`    | Rot oder Blau? Das Umfrage-Dilemma mit Stimme, Quelle: Prof. Rieck |
 | `video`    | Videothek-Kasse von 1994 im DOS-Look: Verleih, Rückgabe, Bon   |

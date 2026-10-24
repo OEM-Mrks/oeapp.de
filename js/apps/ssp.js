@@ -5,23 +5,37 @@
    Häufigkeit, Markov-Ketten, "nach Sieg bleiben / nach Niederlage
    wechseln", Reaktion auf seine letzte Hand – plus etwas Zufall.
    "ssp --bo3" / "--bo7" ändert die Länge, "--random" = reiner Zufall,
-   "--reset" löscht Statistik und Gedächtnis. */
+   "--reset" löscht Statistik und Gedächtnis.
+   Stufen: leicht = Zufall mit Hang zur Niederlage, mehr Zeit, die CPU braucht
+   einen Sieg mehr; normal = lernende KI; schwer = kaum Zufall, knapper Takt.
+   Wechsel mit L oder per Tippen auf die Stufe (vor und zwischen den Matches). */
 
 OE.register({
   id: "ssp",
   alias: ["schnick", "rps", "schnickschnackschnuck"],
   title: "schnick.schnack.schnuck",
   desc: "Schere, Stein, Papier im Takt gegen eine lernende KI.",
+  demo: true,
   start(ctx){
     const NAME = ["Schere", "Stein", "Papier"];
     const beats = (a, b) => a === (b + 1) % 3;           // Stein > Schere, Papier > Stein, Schere > Papier
     const counter = m => (m + 1) % 3;                    // die Hand, die m schlägt
-    const BEAT = 600, GRACE = 320, DEADLINE = 2 * BEAT + GRACE;
+    const lv = ctx.levels();
+    const LV = () => ctx.demo ? "normal" : lv.value;
+    // Takt je Stufe; Vorführung: etwas schneller, damit drei Runden in 8 s passen
+    let BEAT, GRACE, DEADLINE;
+    function tempo(){
+      [BEAT, GRACE] = ctx.demo ? [430, 160] : { leicht: [680, 650], normal: [600, 320], schwer: [560, 170] }[LV()];
+      DEADLINE = 2 * BEAT + GRACE;
+    }
+    tempo();
     const boArg = ctx.args.map(a => /^-*bo(\d+)$/i.exec(a) || /^(\d+)$/.exec(a)).find(Boolean);
     let BO = boArg ? Math.max(1, Math.min(15, +boArg[1])) : 5;
     if (BO % 2 === 0) BO++;
+    if (ctx.demo) BO = 7;                                // Vorführung: kein Matchende in 8 s
     const NEED = Math.ceil(BO / 2), RANDOM = ctx.args.includes("--random");
-    if (ctx.args.includes("--reset")){ ctx.store.set("ssp.stats", null); ctx.store.set("ssp.hist", null); }
+    const needCpu = () => NEED + (LV() === "leicht" ? 1 : 0);   // leicht: die CPU braucht einen Sieg mehr
+    if (ctx.args.includes("--reset")){ for (const k of ["", ".leicht", ".schwer"]) ctx.store.set("ssp.stats" + k, null); ctx.store.set("ssp.hist", null); }
 
     /* ---------- ASCII-Hände (zeigen nach rechts, für den Computer gespiegelt) ---------- */
     const W = 18;
@@ -92,12 +106,19 @@ OE.register({
     }
     function pick(){
       predict();
+      if (LV() === "leicht" && !RANDOM){
+        // leicht: meist Zufall, gern aber die Hand, die gegen deine wahrscheinlichste verliert
+        const c = cand.filter(x => !x.v).sort((a, b) => b.pct - a.pct)[0];
+        if (c && Math.random() < 0.45) return { m: (c.base + 2) % 3, why: `glaubt, du spielst ${NAME[c.base]} – und nimmt ${NAME[(c.base + 2) % 3]}` };
+        return { m: ctx.rint(0, 2), why: "würfelt (stufe leicht)" };
+      }
       let best = null;
       // bei Gleichstand: das sicherere Muster, unverschobene Variante (erklärt sich besser)
       const val = c => score[c.k] + c.pct / 1000 + (c.v ? 0 : 0.01);
       for (const c of cand) if (!best || val(c) > val(best)) best = c;
       // Zufall: am Anfang, ohne brauchbares Modell, und gelegentlich zum Verschleiern
-      if (RANDOM || !best || score[best.k] < 0.6 || Math.random() < 0.12)
+      const hard = LV() === "schwer";
+      if (RANDOM || !best || score[best.k] < (hard ? 0.3 : 0.6) || Math.random() < (hard ? 0.04 : 0.12))
         return { m: ctx.rint(0, 2), why: RANDOM ? "zufall (--random)" : !best ? "zu wenig daten – rate" : score[best.k] < 0.6 ? "kein klares muster – würfelt" : "würfelt diesmal (damit du mich nicht liest)" };
       const P = PRED[best.pi];
       return { m: counter(best.m), why: P.say(best.base, best.pct) + (best.v ? " – aber du denkst um die Ecke" : "") + ` → ${NAME[counter(best.m)]}` };
@@ -116,8 +137,12 @@ OE.register({
     const saveHist = () => ctx.store.set("ssp.hist", H.slice(-120).map(r => "" + r.p + r.c).join(""));
 
     /* ---------- Statistik ---------- */
-    const S = Object.assign({ m: 0, mw: 0, r: 0, rw: 0, rl: 0, rd: 0, late: 0, best: 0 }, ctx.store.get("ssp.stats", null) || {});
-    const saveStats = () => ctx.store.set("ssp.stats", S);
+    // Statistik je Stufe; normal behält den alten Schlüssel
+    const statKey = () => "ssp.stats" + (LV() === "normal" ? "" : "." + LV());
+    let S;
+    const loadStats = () => { S = Object.assign({ m: 0, mw: 0, r: 0, rw: 0, rl: 0, rd: 0, late: 0, best: 0 }, ctx.store.get(statKey(), null) || {}); };
+    loadStats();
+    const saveStats = () => ctx.store.set(statKey(), S);
 
     /* ---------- Aufbau ---------- */
     const { bar, body, pad } = ctx.layout();
@@ -165,13 +190,13 @@ OE.register({
 
     const fnv = s => { let h = 0x811c9dc5; for (const ch of s){ h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(16).padStart(8, "0"); };
 
-    function pips(n){ return "●".repeat(n) + "○".repeat(Math.max(0, NEED - n)); }
+    function pips(n, need = NEED){ return "●".repeat(n) + "○".repeat(Math.max(0, need - n)); }
     function renderScore(){
-      scoreEl.innerHTML = `<span class="dim">DU</span> <b>${pips(sc[0])}</b> <span class="ssp-num">${sc[0]} : ${sc[1]}</span> <b>${pips(sc[1])}</b> <span class="dim">CPU</span>`;
-      bar.innerHTML = `<span>best of <b>${BO}</b></span><span>runde <b>${round}</b></span>
+      scoreEl.innerHTML = `<span class="dim">DU</span> <b>${pips(sc[0])}</b> <span class="ssp-num">${sc[0]} : ${sc[1]}</span> <b>${pips(sc[1], needCpu())}</b> <span class="dim">CPU</span>`;
+      bar.innerHTML = `<span class="ssp-lv" style="cursor:pointer">stufe <b>${LV()}</b></span><span>best of <b>${BO}</b></span><span>runde <b>${round}</b></span>
         <span>serie <b>${streak}</b> <span class="ssp-sm">(rekord ${S.best})</span></span>
         <span>matches <b>${S.mw}:${S.m - S.mw}</b></span>
-        <span class="right">1/S schere · 2/T stein · 3/P papier · ENTER = los</span>`;
+        <span class="right">1/S schere · 2/T stein · 3/P papier · L stufe · ENTER = los</span>`;
     }
     function hands(pm, cm){ meHand.textContent = ART[pm].join("\n"); cpuHand.textContent = ART_C[cm].join("\n"); }
     function restart(el, cls){ el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
@@ -191,6 +216,19 @@ OE.register({
       if (state === "ready" || state === "wait" || state === "over"){ next(); if (state === "count") choose(m); }
     }
 
+    // Stufe wechseln: nur vor und zwischen den Matches, dann beginnt ein neues
+    function setLevel(){
+      if (ctx.demo || !(state === "ready" || state === "over")) return false;
+      lv.next(); tempo(); loadStats();
+      ctx.beep(1200, 30);
+      if (state === "over") newMatch();
+      state = "ready"; title();
+      return true;
+    }
+    function lvBtn(){
+      return `<button type="button" class="ssp-lvb" style="font:inherit;color:inherit;background:rgba(51,255,102,.08);border:1px solid currentColor;padding:6px 14px;margin:6px 0;cursor:pointer">stufe ‹ <b>${LV()}</b> ›</button>`;
+    }
+
     function next(){
       if (state === "over") newMatch();
       if (state === "count" || state === "reveal") return;
@@ -208,6 +246,8 @@ OE.register({
       salt = Math.random().toString(36).slice(2, 6);
       commitEl.innerHTML = `cpu hat gewählt · commit <b>${fnv(NAME[cpuMove] + ":" + salt)}</b>`;
       modelEl.innerHTML = `<span class="dim">${ctx.touch ? "tippe" : "drück"} deine Hand vor „SCHNUCK!“</span>`;
+      // Vorführung: der Spieler entscheidet sich irgendwann zwischen SCHNICK und SCHNUCK
+      if (ctx.demo){ const m = ctx.rint(0, 2); ctx.after(ctx.rint(BEAT * 0.4, BEAT * 1.8), () => { if (id === runId) choose(m); }); }
       me.className = "ssp-side ssp-me"; cpu.className = "ssp-side ssp-cpu";
       meName.innerHTML = "DU"; cpuName.innerHTML = "CPU";
       hands(1, 1);
@@ -224,6 +264,12 @@ OE.register({
         setWord(w, k === 2 ? "go" : "");
         restart(meHand, "bob"); restart(cpuHand, "bob");
         ctx.beep(k === 2 ? 990 : 660, k === 2 ? 120 : 70, "square", 0.05);
+        // leicht: bei SCHNACK verrät sich die CPU kurz (gewählt hat sie da längst)
+        if (k === 1 && LV() === "leicht"){
+          cpuHand.textContent = ART_C[cpuMove].join("\n");
+          cpuName.innerHTML = `CPU <span class="dim">· zuckt Richtung ${NAME[cpuMove]}?</span>`;
+          ctx.after(380, () => { if (id === runId && state === "count"){ cpuHand.textContent = ART_C[1].join("\n"); cpuName.innerHTML = "CPU"; } });
+        }
       }));
       ctx.after(DEADLINE, () => { if (id === runId) resolve(); });
     }
@@ -242,11 +288,13 @@ OE.register({
       if (late){
         res = 1; S.late++;
         me.classList.add("late"); meHand.textContent = LATE.join("\n");
+        if (LV() === "leicht") me.classList.remove("lose");
         meName.innerHTML = `DU <span class="err">· —</span>`;
       } else {
         res = beats(pick_, cpuMove) ? 0 : beats(cpuMove, pick_) ? 1 : 2;
-        learn(pick_, cpuMove); saveHist();
+        if (!ctx.demo){ learn(pick_, cpuMove); saveHist(); }
       }
+      if (late && LV() === "leicht") res = 2;          // leicht: zu spät kostet keinen Punkt
       if (res === 0){ sc[0]++; S.rw++; streak++; S.best = Math.max(S.best, streak); me.classList.add("win"); cpu.classList.add("lose"); }
       else if (res === 1){ sc[1]++; S.rl++; streak = 0; cpu.classList.add("win"); me.classList.add("lose"); }
       else { S.rd++; }
@@ -256,7 +304,7 @@ OE.register({
       else ctx.beep(520, 120, "triangle", 0.05);
       renderScore();
       const id = runId;
-      if (sc[0] >= NEED || sc[1] >= NEED){
+      if (sc[0] >= NEED || sc[1] >= needCpu()){
         const won = sc[0] > sc[1];
         S.m++; if (won) S.mw++;
         saveStats();
@@ -266,37 +314,50 @@ OE.register({
           state = "over"; renderScore();
           const pct = n => S.r ? Math.round(n / S.r * 100) : 0;
           overlay(`<div class="big ${won ? "" : "ssp-red"}">${won ? "GEWONNEN" : "VERLOREN"}</div><div class="ssp-ovscore">${sc[0]} : ${sc[1]}</div>
+            ${won && LV() === "leicht" ? `<div>match gewonnen – bereit für <b>normal</b>?</div>` : ""}
             <div class="dim">matches ${S.mw}:${S.m - S.mw} · rekord-serie ${S.best}</div>
             <div class="dim">runden: ${pct(S.rw)} % gew. · ${pct(S.rl)} % verl. · ${pct(S.rd)} % remis</div>
-            <div class="dim">${ctx.touch ? "tippen" : "ENTER"} = nochmal · ESC = exit</div>`);
+            ${lvBtn()}
+            <div class="dim">${ctx.touch ? "tippen" : "ENTER"} = nochmal · ${ctx.touch ? "" : "L = stufe · "}ESC = exit</div>`);
         });
         return;
       }
       saveStats();
       state = "reveal";
       // nach "zu spät" wartet das Spiel, sonst geht es im Takt weiter
-      ctx.after(late ? 900 : 700, () => {
+      ctx.after(late ? 900 : ctx.demo ? 500 : 700, () => {
         if (id !== runId) return;
         state = "wait";
-        if (late) modelEl.innerHTML = `<span class="warn">${ctx.touch ? "tippen" : "ENTER"} = weiter</span> <span class="dim">· wähle vor dem Ende des Balkens</span>`;
-        else ctx.after(1500, () => { if (id === runId && state === "wait") next(); });
+        if (late) modelEl.innerHTML = `<span class="warn">${ctx.touch ? "tippen" : "ENTER"} = weiter</span> <span class="dim">· wähle vor dem Ende des Balkens${LV() === "leicht" ? " · zählt nicht" : ""}</span>`;
+        else ctx.after(ctx.demo ? 750 : 1500, () => { if (id === runId && state === "wait") next(); });
       });
     }
 
-    body.addEventListener("pointerdown", () => { if (state !== "count" && state !== "reveal") next(); });
+    body.addEventListener("pointerdown", e => {
+      if (e.target.closest(".ssp-lvb")){ e.preventDefault(); setLevel(); return; }
+      if (state !== "count" && state !== "reveal") next();
+    });
+    bar.addEventListener("click", e => { if (e.target.closest(".ssp-lv")) setLevel(); });
 
     hands(1, 1);
     meName.textContent = "DU"; cpuName.textContent = "CPU";
     renderScore();
-    const known = H.length ? `das modell kennt ${H.length} deiner züge` : "das modell lernt deine muster";
-    overlay(`<div class="big ssp-title">SCHNICK<br>SCHNACK<br>SCHNUCK!</div>
-      <div>schere, stein, papier · best of ${BO}</div>
-      <div class="dim">wähle im takt – spätestens bei „SCHNUCK!“</div>
-      <div class="dim">${ctx.touch ? "unten tippen: schere · stein · papier" : "1/S schere · 2/T stein · 3/P papier"}</div>
-      <div class="dim">${known} · matches ${S.mw}:${S.m - S.mw}</div>
-      <div>${ctx.touch ? "tippen zum Start" : "ENTER = start"}</div>`);
+    function title(){
+      const known = H.length ? `das modell kennt ${H.length} deiner züge` : "das modell lernt deine muster";
+      const info = { leicht: "die cpu braucht einen sieg mehr<br>und verrät sich bei „SCHNACK“", normal: known, schwer: "lernt schnell, würfelt kaum · knapper takt" }[LV()];
+      overlay(`<div class="big ssp-title">SCHNICK<br>SCHNACK<br>SCHNUCK!</div>
+        <div>schere, stein, papier · best of ${BO}</div>
+        <div class="dim">wähle im takt – spätestens bei „SCHNUCK!“</div>
+        <div class="dim">${ctx.touch ? "unten tippen: schere · stein · papier" : "1/S schere · 2/T stein · 3/P papier"}</div>
+        ${lvBtn()}
+        <div class="dim">${info}</div><div class="dim">matches ${S.mw}:${S.m - S.mw}</div>
+        <div>${ctx.touch ? "tippen zum Start" : "ENTER = start · L = stufe"}</div>`);
+      renderScore();
+    }
+    title();
     addEventListener("resize", fit);
     fit(); ctx.after(50, fit);
+    if (ctx.demo){ overlay(null); ctx.after(150, next); }   // Vorführung: ohne Titel gleich los
 
     return {
       stop(){ removeEventListener("resize", fit); },
@@ -304,6 +365,7 @@ OE.register({
         const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
         const m = { "1": 0, s: 0, "2": 1, t: 1, "3": 2, p: 2 }[k];
         if (m !== undefined){ choose(m); return true; }
+        if (k === "l"){ setLevel(); return true; }
         if (k === "Enter" || k === " "){ if (state !== "count" && state !== "reveal") next(); return true; }
         if (k === "q"){ ctx.exit(); return true; }
         return false;
