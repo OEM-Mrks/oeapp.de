@@ -16,6 +16,7 @@ live erzeugt, je Spiel ein eigener Track).
 | `blocks`   | Fallende Blöcke im ASCII-Look (Tetris-artig, eigener Code)  |
 | `pong`     | Tischtennis gegen den Computer (`pong --2p` zu zweit)       |
 | `chomp`    | Labyrinth mit vier Geistern (Pac-Man-artig, eigener Code)   |
+| `fixit`    | Fenster flicken, Ziegeln ausweichen (Hommage an Fix-It Felix Jr.) |
 | `tron`     | Lichtrad-Duell gegen 1–3 Computergegner (Tron, 1982)        |
 | `race`     | Pseudo-3D-Autorennen mit Checkpoints, Hupe (H), Polizei (C) |
 | `ttt`      | Tic-Tac-Toe gegen den Computer (3 Stufen) oder `--2p`       |

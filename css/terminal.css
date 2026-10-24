@@ -670,6 +670,31 @@ body.app-on #app{ display:flex; flex-direction:column; }
   .pd-hide{ display:none; }
 }
 
+/* fixit: Arcade-Bildschirm und Touch-Steuerung (Steuerkreuz links, Hammer rechts) */
+.fx-canvas{
+  border-radius:10px;
+  box-shadow:0 0 0 1px rgba(255,190,90,.28), 0 0 26px rgba(255,110,60,.2);
+}
+.touch .pad.fx-pad{
+  display:grid; grid-template-columns:repeat(3, 56px) 1fr; grid-template-rows:46px 46px;
+  gap:6px; width:100%; max-width:440px; margin:0 auto; padding-top:8px;
+}
+.touch .pad.fx-pad button{ height:auto; min-width:0; font-size:18px; }
+.touch .pad.fx-pad button:nth-child(1){ grid-area:2 / 1; }
+.touch .pad.fx-pad button:nth-child(2){ grid-area:1 / 2; }
+.touch .pad.fx-pad button:nth-child(3){ grid-area:2 / 2; }
+.touch .pad.fx-pad button:nth-child(4){ grid-area:2 / 3; }
+.touch .pad.fx-pad button:nth-child(5){
+  grid-area:1 / 4 / 3 / 5; margin-left:10px;
+  font-size:17px; letter-spacing:.2em; font-weight:600;
+  color:#ffd23c; border-color:rgba(255,210,60,.75); text-shadow:0 0 8px rgba(255,210,60,.6);
+}
+.touch .pad.fx-pad button:nth-child(5):active{ background:#ffd23c; color:#000; text-shadow:none; }
+.touch .pad.fx-pad button:nth-child(6){ grid-area:1 / 1; font-size:13px; color:var(--green-dim); border-color:rgba(51,255,102,.25); }
+@media (pointer:coarse) and (max-height:500px){
+  .touch .pad.fx-pad{ grid-template-rows:38px 38px; }
+}
+
 /* exit: Bild zerfällt, danach nur noch der Cursor */
 .shatter{ position:fixed; inset:0; z-index:45; pointer-events:none; overflow:hidden; background:#000; }
 .shard{ position:absolute; overflow:hidden; will-change:transform; }
