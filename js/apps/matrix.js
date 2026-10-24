@@ -6,6 +6,7 @@ OE.register({
   alias: ["rain"],
   title: "matrix.scr",
   desc: "Digitaler Regen als Bildschirmschoner, grün und grob wie 1999.",
+  demo: true,
   start(ctx){
     ctx.el.innerHTML = `<div class="app-bar"><span>matrix <b>.scr</b></span><span class="right">SPACE einfrieren · klick = nachricht · ESC exit</span></div>
       <div class="app-body"><canvas class="app-canvas matrix-cv" style="width:100%;height:100%"></canvas></div>`;
@@ -79,6 +80,8 @@ OE.register({
     const onResize = () => size();
     addEventListener("resize", onResize);
     size();
+    // Vorführung: Regen gleich in voller Fahrt, dann kommt eine Nachricht
+    if (ctx.demo){ for (let i = 0; i < 45; i++) frame(); ctx.after(1800, drop); }
 
     return {
       stop(){ removeEventListener("resize", onResize); },

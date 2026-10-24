@@ -1,18 +1,21 @@
 /* blocks — fallende Blöcke. Standard ist eine Canvas-Ansicht mit
    leuchtenden Phosphor-Blöcken; "V" schaltet zurück auf den ASCII-Look
    der allerersten Version auf dem Elektronika 60 (<! . . !>).
-   Eigene Umsetzung, kein fremder Code. */
+   Eigene Umsetzung, kein fremder Code.
+   Stufen: leicht (langsam, längere Liegezeit, 5 Reihen = gewonnen),
+   normal (wie früher, endlos), schwer (startet auf Level 6, kurze Liegezeit). */
 
 OE.register({
   id: "blocks",
   alias: ["tetris"],
   title: "blocks.exe",
   desc: "Fallende Blöcke, volle Reihen verschwinden (Tetris-artig).",
+  demo: true,
   start(ctx){
     const W = 10, H = 20, HID = 2, ROWS = H + HID;   // HID = unsichtbare Pufferreihen über dem Brett
     const DAS = 150, ARR = 40;        // Verzögerung / Wiederholrate beim Halten von ← →
     const SOFT = 30;                  // ms pro Reihe beim Halten von ↓
-    const LOCK = 500, RESETS = 15;    // Liegezeit am Boden, max. Neustarts durch Bewegen
+    const RESETS = 15;                // max. Neustarts der Liegezeit durch Bewegen
     const RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     const GREEN = "#33ff66", DIM = "#1a8a36", BRIGHT = "#a6ffb8", AMBER = "#ffb454", RED = "#ff5a5a";
@@ -53,7 +56,15 @@ OE.register({
 
     // Startlevel optional: "blocks 5"
     const argLv = parseInt(ctx.args.find(a => /^\d+$/.test(a)), 10);
-    const START_LV = Math.max(1, Math.min(15, argLv || 1));
+    const lv = ctx.levels();
+    const stufe = () => ctx.demo ? "normal" : lv.value;
+    const GOAL = 5;                                         // leicht: so viele Reihen bis zum Sieg
+    // je Stufe: Startlevel, Liegezeit am Boden (ms), feste Fallzeit pro Reihe (leicht)
+    const LV = { leicht: { lv: 1, lock: 900, fall: 900 }, normal: { lv: 1, lock: 500 }, schwer: { lv: 6, lock: 350 } };
+    const startLv = () => Math.max(LV[stufe()].lv, Math.min(15, argLv || 1));
+    let START_LV = startLv(), LOCK = LV[stufe()].lock;
+    // Rekord je Stufe; "normal" behält den alten Schlüssel, "leicht" zählt die Bestzeit
+    const bestKey = () => stufe() === "normal" ? "blocks.best" : "blocks.best." + stufe();
 
     /* ---------- Aufbau ---------- */
     const { bar, body, pad } = ctx.layout();
@@ -76,8 +87,8 @@ OE.register({
     /* ---------- Zustand ---------- */
     let view = ctx.store.get("blocks.view", "phosphor") === "ascii" ? "ascii" : "phosphor";
     let grid, cur, queue, hold, canHold, score, shown, lines, level, combo, b2b;
-    let best = ctx.store.get("blocks.best", 0);
-    let state = "ready", gen = 0, overT = 0, now = 0;
+    let best = ctx.store.get(bestKey(), 0);
+    let state = "ready", gen = 0, overT = 0, now = 0, playT = 0, goalHit = false, won = false;
     let acc = 0, lockT = 0, resets = 0, lowY = 0, lastRot = false;
     let clearing = null;                                   // laufende Reihen-Animation
     const das = { dir: 0, last: 0, t: 0, r: 0 };
@@ -210,6 +221,7 @@ OE.register({
         } else ctx.beep(tspin ? 740 : 880 + n * 110, 90, "square", 0.03);
 
         lines += n;
+        if (stufe() === "leicht" && lines >= GOAL) goalHit = true;
         const nl = Math.max(START_LV, 1 + Math.floor(lines / 10));
         if (nl > level){
           level = nl;
@@ -229,6 +241,7 @@ OE.register({
     function finishClear(){
       for (const y of clearing.rows.slice().sort((a, b) => a - b)){ grid.splice(y, 1); grid.unshift(Array(W).fill(0)); }
       clearing = null;
+      if (goalHit) return win();
       if (grid.every(r => r.every(v => !v))){
         const bonus = 1000 * level; score += bonus;
         banner("A L L  C L E A R", "+" + bonus, BRIGHT);
@@ -237,12 +250,60 @@ OE.register({
     }
 
     function gravity(){
+      if (LV[stufe()].fall) return LV[stufe()].fall;
       // klassische Kurve: Sekunden pro Reihe = (0.8 − (L−1)·0.007)^(L−1)
       const l = level - 1;
       return Math.max(16, 1000 * Math.pow(0.8 - l * 0.007, l));
     }
 
+    /* ---------- Vorführung: KI sucht Drehlage und Spalte, fährt hin, lässt fallen ---------- */
+    let ai = null;
+    function evalGrid(gr){
+      // übliche Gewichte: Höhe, Löcher, Unebenheit schlecht; volle Reihen gut
+      let agg = 0, holes = 0, bump = 0, prev = -1, done = 0;
+      for (let y = 0; y < ROWS; y++) if (gr[y].every(Boolean)) done++;
+      for (let x = 0; x < W; x++){
+        let top = ROWS;
+        for (let y = 0; y < ROWS; y++) if (gr[y][x]){ top = y; break; }
+        const h = ROWS - top;
+        for (let y = top + 1; y < ROWS; y++) if (!gr[y][x]) holes++;
+        agg += h; if (prev >= 0) bump += Math.abs(h - prev); prev = h;
+      }
+      return -0.51 * agg + 0.76 * done * done - 0.36 * holes * 3 - 0.18 * bump;
+    }
+    function aiPlan(){
+      let best = null;
+      for (let r = 0; r < (cur.t === "O" ? 1 : 4); r++) for (let x = -2; x < W; x++){
+        const p = { t: cur.t, r, x, y: cur.y };
+        if (collides(p)) continue;
+        while (!collides(p, 0, 1)) p.y++;
+        const gr = grid.map(row => row.slice());
+        for (const [cx, cy] of cellsOf(p)) if (cy >= 0) gr[cy][cx] = cur.t;
+        const sc = evalGrid(gr);
+        if (!best || sc > best.sc) best = { r, x, sc };
+      }
+      return best;
+    }
+    function aiTick(dt){
+      if (!cur || clearing) return;
+      if (!ai || ai.p !== cur){ ai = { p: cur, plan: aiPlan(), t: -120 }; return; }
+      if ((ai.t += dt) < 55) return;
+      ai.t = 0;
+      const pl = ai.plan;
+      if (!pl) return hardDrop();
+      if (cur.r !== pl.r){ const r0 = cur.r; rotate(1); if (cur.r === r0) ai.plan = null; return; }
+      if (cur.x !== pl.x){ if (!tryMove(Math.sign(pl.x - cur.x))) ai.plan = null; return; }
+      hardDrop();
+    }
+    // leicht vorgefülltes Brett: rechts eine Lücke, damit gleich etwas fällt
+    function demoFill(){
+      for (let y = ROWS - 4; y < ROWS; y++) for (let x = 0; x < W - 1; x++) grid[y][x] = TYPES[(x * 3 + y) % 7];
+      for (let x = 0; x < 6; x++) if (x !== 2) grid[ROWS - 5][x] = TYPES[(x + 2) % 7];
+      queue.unshift(cur.t); cur = spawn("T"); queue.splice(1, 0, "I");
+    }
+
     function update(dt){
+      if (ctx.demo) aiTick(dt);
       autoShift(dt);
       if (clearing){
         clearing.t += dt;
@@ -278,11 +339,17 @@ OE.register({
     }
 
     function reset(){
+      START_LV = startLv(); LOCK = LV[stufe()].lock; best = ctx.store.get(bestKey(), 0); playT = 0; goalHit = false; won = false;
       grid = Array.from({ length: ROWS }, () => Array(W).fill(0));
       queue = []; hold = null;
       score = 0; shown = 0; lines = 0; level = START_LV; combo = -1; b2b = false;
       clearing = null; overT = 0;
       fx = { pop: [], spark: [], trail: [], flash: null, shake: 0, pulse: 0, banner: null };
+      // leicht: unten zwei Reihen mit je einem Loch in derselben Spalte – ein senkrechtes Teil räumt beide
+      if (stufe() === "leicht"){
+        const hole = Math.floor(Math.random() * W);
+        for (let y = ROWS - 2; y < ROWS; y++) for (let x = 0; x < W; x++) if (x !== hole) grid[y][x] = TYPES[(x * 3 + y) % 7];
+      }
       spawnNext();
     }
 
@@ -290,14 +357,65 @@ OE.register({
       state = "over"; overT = 0; clearing = null;
       const my = ++gen;
       const record = score > best;
-      if (record){ best = score; ctx.store.set("blocks.best", best); ctx.log("OK", `blocks: neuer Highscore <span class="ok">${score}</span>`); }
+      if (record && stufe() !== "leicht"){ best = score; ctx.store.set(bestKey(), best); ctx.log("OK", `blocks: neuer Highscore <span class="ok">${score}</span>`); }
       [392, 330, 262, 196].forEach((f, i) => ctx.after(i * 130, () => ctx.beep(f, 160, "sawtooth", 0.022)));
       ctx.after(800, () => {
         if (state !== "over" || gen !== my) return;
         overlay(`<div class="big">GAME OVER</div><div>score ${score} · ${lines} reihen · level ${level}</div>` +
-          (record ? `<div class="ok">neuer Highscore!</div>` : `<div class="dim">best ${best}</div>`) +
-          `<div class="dim">${ctx.touch ? "tippen" : "ENTER"} = nochmal · ESC = exit</div>`);
+          (stufe() === "leicht" ? "" : record ? `<div class="ok">neuer Highscore!</div>` : `<div class="dim">best ${best}</div>`) +
+          lvBtn() + `<div class="dim">${ctx.touch ? "tippen" : "ENTER"} = nochmal · ESC = exit</div>`);
       });
+    }
+
+    // leicht: Ziel erreicht – Jubel, Bestzeit
+    const secs = t => (t / 1000).toFixed(1) + " s";
+    function win(){
+      cur = null; goalHit = false; won = true;
+      state = "over"; overT = 0; gen++;
+      const t = Math.round(playT), rec = !best || t < best;
+      if (rec){ best = t; ctx.store.set(bestKey(), best); }
+      banner("G E W O N N E N", `${GOAL} reihen`, AMBER); fx.pulse = 1;
+      [1046, 1318, 1568, 2093].forEach((f, i) => ctx.after(i * 110, () => ctx.beep(f, 120, "square", 0.04)));
+      confetti();
+      ctx.log("OK", `blocks: gewonnen in ${secs(t)}`);
+      ctx.after(900, () => {
+        if (state !== "over") return;
+        overlay(`<div class="big">G E W O N N E N</div><div>${lines} reihen in ${secs(t)}${rec ? "  ★ bestzeit" : ""}</div>` +
+          lvBtn() + `<div class="dim">${ctx.touch ? "tippen" : "ENTER"} = nochmal · ${ctx.touch ? "" : "2 = normal · "}ESC = exit</div>`);
+      });
+    }
+    // Jubel: kleine Blöcke in allen Teilefarben regnen übers Brett
+    function confetti(){
+      if (RM) return;
+      body.style.overflow = "hidden";
+      const h = body.clientHeight + 40, cols = Object.values(COL);
+      for (let i = 0; i < 80; i++){
+        const s = document.createElement("span"), z = 7 + Math.random() * 9, col = cols[i % cols.length];
+        s.style.cssText = `position:absolute;left:${Math.random() * 100}%;top:-24px;width:${z}px;height:${z}px;pointer-events:none;z-index:3;` +
+          `background:${rgba(col, 0.55)};border:1px solid ${col};box-shadow:0 0 8px ${col}`;
+        body.appendChild(s);
+        s.animate([{ transform: "translate(0,0) rotate(0)", opacity: 1 },
+          { transform: `translate(${(Math.random() - 0.5) * 160}px,${h}px) rotate(${Math.round(Math.random() * 4) * 90}deg)`, opacity: 0.3 }],
+          { duration: 1700 + Math.random() * 1800, delay: Math.random() * 900, easing: "cubic-bezier(.3,.5,.6,1)", fill: "both" }).onfinish = () => s.remove();
+      }
+    }
+
+    /* Stufe wählen: 1/2/3 oder Knopf im Overlay / Statuszeile, nur außerhalb des Spiels */
+    const lvBtn = () => ctx.demo ? "" : `<button type="button" class="lv-pick" style="font:inherit;color:${BRIGHT};background:rgba(51,255,102,.08);` +
+      `border:1px solid rgba(51,255,102,.5);padding:6px 14px;margin:6px 0 0;cursor:pointer;touch-action:manipulation">stufe ‹ <b>${stufe()}</b> ›</button>` +
+      `<div class="dim">${{ leicht: `ziel: ${GOAL} reihen · gemütliches tempo`, normal: "endlos · wird schneller", schwer: "ab level 6 · kurze liegezeit" }[stufe()]}</div>`;
+    function titleHtml(){
+      return `<div class="big">B L O C K S</div><div>volle Reihen verschwinden</div><div>4 auf einmal = QUAD</div>` +
+        (ctx.touch
+          ? `<div class="dim">tippen = drehen · wischen/◀ ▶ = bewegen</div><div class="dim">⤓ = fallen · hold = halten</div><div>tippen zum Start</div>`
+          : `<div class="dim">← → bewegen · ↑ drehen · ↓ schneller · SPACE fallen · C halten</div><div class="dim">ENTER = start · P = pause · V = ansicht · 1 2 3 = stufe</div>`) +
+        lvBtn() + viewBtn();
+    }
+    function setLevel(v){
+      if (state === "running" || ctx.demo || v === lv.value) return;
+      lv.set(v); reset(); state = "ready"; gen++;
+      ctx.beep(520 + lv.index * 180, 60, "square", 0.03);
+      overlay(titleHtml()); drawBar();
     }
 
     function begin(){
@@ -489,7 +607,7 @@ OE.register({
 
       // Alle Zellen sammeln, dann erst Leuchten, dann Blöcke zeichnen
       const ops = [];
-      const curtain = state === "over" ? Math.floor(overT / 26) : 0;
+      const curtain = state === "over" && !won ? Math.floor(overT / 26) : 0;
       for (let y = HID; y < ROWS; y++){
         const py = by + (y - HID) * c;
         if (y >= ROWS - curtain){ for (let x = 0; x < W; x++) ops.push({ t: "X", px: bx + x * c, py, sz: c, a: 1, kind: "core" }); continue; }
@@ -639,7 +757,8 @@ OE.register({
         g.font = font(clamp(c * 0.85, 12, 26), 600); g.fillStyle = BRIGHT; g.shadowColor = GREEN; g.shadowBlur = 8;
         g.fillText(String(Math.round(shown)).padStart(6, "0"), x, y + 0.65 * c);
         g.shadowBlur = 0;
-        const rows = [["LINES", lines], ["LEVEL", level], ["BEST", Math.max(best, score)]];
+        const rows = stufe() === "leicht" ? [["LINES", `${lines}/${GOAL}`], ["LEVEL", level], ["BEST", best ? secs(best) : "–"]]
+          : [["LINES", lines], ["LEVEL", level], ["BEST", Math.max(best, score)]];
         rows.forEach(([k, v], i) => {
           const ry = y + (1.85 + i * 0.8) * c;
           label(k, x, ry, c);
@@ -664,14 +783,15 @@ OE.register({
     function overlay(html){ ov.hidden = !html; if (html) ov.innerHTML = html; }
     const viewBtn = () => `<button type="button" class="blocks-view">ansicht: ${view === "ascii" ? "ascii (1984)" : "phosphor"} ⇄</button>`;
     let barHtml = "";
+    const lvSpan = () => `<span class="lv" style="cursor:pointer">stufe <b>${stufe()}</b>${stufe() === "leicht" ? ` · ziel <b>${Math.min(lines || 0, GOAL)}/${GOAL}</b>` : ""}</span>`;
     function drawBar(){
       let html;
       if (L.mode === "top" && grid){
         // schmaler Schirm: Punkte stehen oben in der Statuszeile
-        html = `<span>score <b>${String(Math.round(shown)).padStart(6, "0")}</b></span><span>lines <b>${lines}</b></span>` +
-          `<span>lv <b>${level}</b></span><span class="right">best <b>${Math.max(best, score)}</b></span>`;
+        html = `<span>score <b>${String(Math.round(shown)).padStart(6, "0")}</b></span><span>lines <b>${lines}${stufe() === "leicht" ? "/" + GOAL : ""}</b></span>` +
+          `<span>lv <b>${level}</b></span>${lvSpan()}` + (stufe() === "leicht" ? "" : `<span class="right">best <b>${Math.max(best, score)}</b></span>`);
       } else {
-        html = `<span>blocks <b>v2.0</b></span>` + (ctx.touch
+        html = `<span>blocks <b>v2.0</b></span>${lvSpan()}` + (ctx.touch
           ? `<span class="right">tippen = drehen · wischen = bewegen</span>`
           : `<span>ansicht <b>${view}</b></span><span class="right">V = ansicht · P = pause · ESC = exit</span>`);
       }
@@ -685,8 +805,12 @@ OE.register({
       if (b) b.outerHTML = viewBtn();
     }
     // Knopf im Overlay: darf nicht als "Tippen = Start" durchgehen
-    ov.addEventListener("pointerdown", e => { if (e.target.closest(".blocks-view")) e.stopPropagation(); });
-    ov.addEventListener("click", e => { if (e.target.closest(".blocks-view")){ e.stopPropagation(); toggleView(); } });
+    ov.addEventListener("pointerdown", e => { if (e.target.closest(".blocks-view, .lv-pick")) e.stopPropagation(); });
+    ov.addEventListener("click", e => {
+      if (e.target.closest(".blocks-view")){ e.stopPropagation(); toggleView(); }
+      if (e.target.closest(".lv-pick")){ e.stopPropagation(); setLevel(lv.names[(lv.index + 1) % 3]); }
+    });
+    bar.addEventListener("click", e => { if (e.target.closest(".lv")) setLevel(lv.names[(lv.index + 1) % 3]); });
 
     drawBar();
     ctx.buttons(pad, [
@@ -708,19 +832,17 @@ OE.register({
 
     ctx.loop((dt, t) => {
       dt = Math.min(dt, 50); now = t;
-      if (state === "running") update(dt);
+      if (state === "running"){ update(dt); playT += dt; }
       if (state !== "paused") tickFx(dt); else shown = score;
+      drawBar();
       if (state === "over") overT += dt;
       render();
     });
 
     reset();
     size();
-    overlay(`<div class="big">B L O C K S</div><div>volle Reihen verschwinden</div><div>4 auf einmal = QUAD</div>` +
-      (ctx.touch
-        ? `<div class="dim">tippen = drehen · wischen/◀ ▶ = bewegen</div><div class="dim">⤓ = fallen · hold = halten</div><div>tippen zum Start</div>`
-        : `<div class="dim">← → bewegen · ↑ drehen · ↓ schneller · SPACE fallen · C halten</div><div class="dim">ENTER = start · P = pause · V = ansicht</div>`) +
-      viewBtn());
+    if (ctx.demo){ demoFill(); state = "running"; overlay(null); }
+    else overlay(titleHtml());
 
     return {
       stop(){
@@ -733,6 +855,7 @@ OE.register({
         const k = e.key, lk = k.length === 1 ? k.toLowerCase() : k;
         if (lk === "v"){ if (!e.repeat) toggleView(); return true; }
         if (lk === "q"){ ctx.exit(); return true; }
+        if (state !== "running" && (k === "1" || k === "2" || k === "3")){ setLevel(lv.names[k - 1]); return true; }
         if (state !== "running"){
           if (k === "Enter" || k === " " || (state === "ready" && k.startsWith("Arrow")) || (state === "paused" && lk === "p")){
             if (!e.repeat) begin();

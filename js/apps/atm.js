@@ -8,8 +8,11 @@ OE.register({
   alias: ["portfolio", "t2", "pinread"],
   title: "atm // pinread",
   desc: "PIN-Programm am Geldautomaten (T2-Hommage, Animation).",
+  demo: true,
   start(ctx){
     const PS = "oe@oeapp:";
+    // Vorführung: ohne Shell-Vorspann und im Zeitraffer, damit in 8 s das Geld kommt
+    const D = ctx.demo, T = (ms, demo) => D ? demo : ms;
 
     ctx.el.innerHTML = `
       <div class="app-bar"><span>pinread <b>// v1.2</b></span><span>link: <b>card slot</b></span>
@@ -87,36 +90,38 @@ OE.register({
       done = false;
       big.hidden = true; hint.textContent = ""; cursor = true;
       cls();
-      if (!await wait(id, 500)) return;
-
-      // Shell-Prompt, Programm starten
       const prompt = dir => { for (const ch of `${PS}${dir}$ `) putc(ch); paint(); };
-      prompt("~");
-      if (!await wait(id, 900)) return;
-      if (!await enter(id, "cd atm")) return;
-      prompt("~/atm");
-      if (!await wait(id, 700)) return;
-      if (!await enter(id, "./pinread --link=card", 700)) return;
+      if (!D){
+        if (!await wait(id, 500)) return;
+
+        // Shell-Prompt, Programm starten
+        prompt("~");
+        if (!await wait(id, 900)) return;
+        if (!await enter(id, "cd atm")) return;
+        prompt("~/atm");
+        if (!await wait(id, 700)) return;
+        if (!await enter(id, "./pinread --link=card", 700)) return;
+      }
 
       cls(); cursor = false;
       print("PIN IDENTIFICATION PROGRAM   v1.2");
       print("=".repeat(Math.min(COLS, 40)));
-      if (!await wait(id, 900)) return;
+      if (!await wait(id, T(900, 200))) return;
       print("card reader ........ ");
-      if (!await wait(id, 700)) return;
+      if (!await wait(id, T(700, 250))) return;
       rows[cy - 1] += "linked"; paint();
-      if (!await wait(id, 500)) return;
+      if (!await wait(id, T(500, 150))) return;
       print("account  ****-****-****-" + ctx.rint(1000, 9999));
-      if (!await wait(id, 900)) return;
+      if (!await wait(id, T(900, 250))) return;
 
       // Magnetstreifen als Hex-Dump
       print("reading magnetic stripe:");
       for (let i = 0; i < 9; i++){
         print(`${(i * 12).toString(16).toUpperCase().padStart(4, "0")}: ${hex(11)}`);
         ctx.beep(2400, 6, "square", 0.01);
-        if (!await wait(id, 160)) return;
+        if (!await wait(id, T(160, 50))) return;
       }
-      if (!await wait(id, 600)) return;
+      if (!await wait(id, T(600, 150))) return;
 
       // Zahlen rauschen durch, oben Kopfzeilen fest
       cls(); top = 3;
@@ -127,19 +132,19 @@ OE.register({
       line(2, "-".repeat(Math.min(COLS, 40)));
       cy = 3;
       for (let pos = 0; pos < 4; pos++){
-        const n = 26 + pos * 8;
+        const n = D ? 9 + pos * 2 : 26 + pos * 8;
         for (let s = 0; s < n; s++){
           // Kolonnen mit Kandidaten; in der Spalte der gesuchten Stelle schon die gefundenen Ziffern
           const cols = Array.from({ length: 5 }, () => pin.map((d, i) => i < pos ? d : ctx.rint(0, 9)).join(""));
           print(" " + cols.join("  ") + "   " + String(ctx.rint(0, 65535)).padStart(5, "0"));
           if (s % 2 === 0) ctx.beep(1000 + ctx.rint(0, 900), 8, "square", 0.01);
-          if (!await wait(id, 55)) return;
+          if (!await wait(id, T(55, 40))) return;
         }
         line(1, status(pos + 1));
         ctx.beep(880, 90, "square", 0.04);
-        if (!await wait(id, 650)) return;
+        if (!await wait(id, T(650, 320))) return;
       }
-      if (!await wait(id, 400)) return;
+      if (!await wait(id, T(400, 150))) return;
 
       // PIN gefunden: blinkt dreimal
       cls(); top = 0;
@@ -148,11 +153,21 @@ OE.register({
       for (let b = 0; b < 6; b++){
         line(3, b % 2 ? "" : `      >>>  PIN  ${pin.join(" ")}  <<<`);
         if (b % 2 === 0) ctx.beep(1320, 70, "square", 0.04);
-        if (!await wait(id, 380)) return;
+        if (!await wait(id, T(380, 200))) return;
       }
       line(3, `      >>>  PIN  ${pin.join(" ")}  <<<`);
       cy = 5; cx = 0;
-      if (!await wait(id, 800)) return;
+      if (!await wait(id, T(800, 200))) return;
+
+      if (D){   // Vorführung: Betrag gleich als Zeile, dann das Geld
+        print("WITHDRAW AMOUNT: 300");
+        print("sending ...... APPROVED");
+        print("DISPENSING  300.00");
+        if (!await wait(id, 350)) return;
+        big.innerHTML = `EASY<br>MONEY!`;
+        big.hidden = false;
+        return;
+      }
 
       // Betrag eintippen
       cursor = true;

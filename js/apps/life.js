@@ -8,6 +8,7 @@ OE.register({
   alias: ["conway"],
   title: "life.sim",
   desc: "Conways Game of Life. ? erklärt die Regeln per Computerstimme.",
+  demo: true,
   start(ctx){
     const { bar, body, pad } = ctx.layout();
     body.innerHTML = `<canvas class="app-canvas" style="cursor:crosshair;touch-action:none"></canvas>
@@ -215,7 +216,13 @@ OE.register({
       { label: "−", key: "-", aria: "langsamer" }, { label: "+", key: "+", aria: "schneller" },
     ]);
 
-    size(); randomize();
+    size();
+    if (ctx.demo){
+      // Vorführung: Gleiterkanone schießt, daneben wuchert ein R-Pentomino; flottes Tempo
+      clear(); stamp(GUN, 2, 2);
+      stamp([".OO", "OO.", ".O."], Math.floor(cols * 0.68), Math.floor(rows * 0.45));
+      speed = 40;
+    } else randomize();
 
     return {
       stop(){ tour = null; if (speech) speech.cancel(); },

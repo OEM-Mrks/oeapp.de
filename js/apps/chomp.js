@@ -1,13 +1,16 @@
 /* chomp — Labyrinth, Punkte fressen, vier Geister. Angelehnt an
    Pac-Man (1980), aber eigenes Labyrinth und eigener Code.
    Geister-Verhalten wie im Vorbild: abwechselnd "Ecke aufsuchen" und
-   "jagen", jeder Geist mit eigenem Ziel; nach einer Kraftpille fliehen sie. */
+   "jagen", jeder Geist mit eigenem Ziel; nach einer Kraftpille fliehen sie.
+   Stufen: leicht (langsame, ziellose Geister, 5 Leben, halbes Feld = gewonnen),
+   normal (wie früher), schwer (schnellere Geister, kürzere Jagdzeit). */
 
 OE.register({
   id: "chomp",
   alias: ["pacman", "pac"],
   title: "chomp.exe",
   desc: "Labyrinth, Punkte, vier Geister (Pac-Man-artig).",
+  demo: true,
   start(ctx){
     const MAZE = [
       "###################",
@@ -42,6 +45,19 @@ OE.register({
       { name: "inky",   color: "#5affe0", corner: [W - 2, H],  release: 5 },
       { name: "clyde",  color: "#ffb454", corner: [1, H],      release: 8 },
     ];
+
+    const lv = ctx.levels();
+    const stufe = () => ctx.demo ? "normal" : lv.value;
+    // je Stufe: Geistertempo, Leben, Kraftpillen-Dauer, Zerstreuen/Jagen (s), Ausgangs-Takt, Anteil zielloser Züge
+    const LV = {
+      leicht: { gs: 4.3, lives: 5, fr: 9, sc: 10, ch: 8,  rel: 2,   wander: 0.6 },
+      normal: { gs: 6.4, lives: 3, fr: 7, sc: 6,  ch: 20, rel: 1,   wander: 0 },
+      schwer: { gs: 7.0, lives: 3, fr: 4, sc: 4,  ch: 26, rel: 0.5, wander: 0 },
+    };
+    const S = () => LV[stufe()];
+    // Rekord je Stufe; "normal" behält den alten Schlüssel, "leicht" zählt die Bestzeit
+    const bestKey = () => stufe() === "normal" ? "chomp.best" : "chomp.best." + stufe();
+    const secs = t => t.toFixed(1) + " s";
 
     const { bar, body, pad } = ctx.layout();
     body.innerHTML = `<canvas class="app-canvas"></canvas><div class="app-overlay"></div>`;
@@ -108,14 +124,16 @@ OE.register({
     const cell = (x, y) => (MAZE[y] || "")[wrapX(x)] || "#";
     const isWall = (x, y) => cell(x, y) === "#";
 
-    let grid, dots, pac, ghosts, score, lives, level, best = ctx.store.get("chomp.best", 0);
+    let grid, dots, pac, ghosts, score, lives, level, best = ctx.store.get(bestKey(), 0), goal = 0, playT = 0;
     let state = "ready", mode = "scatter", modeT = 0, fright = 0, combo = 0, clock = 0, freeze = 0;
     let dieT = 0, eatenDots = 0, fruit = null, readyOn = false;
+    let barKey = "";
     const pops = [], parts = [];   // Punkte-Einblendungen, Funken
 
     function newLevel(){
       grid = MAZE.map(r => [...r].map(c => c === "." ? 1 : c === "o" ? 2 : 0));
       dots = grid.flat().filter(Boolean).length; eatenDots = 0; fruit = null;
+      goal = Math.ceil(dots / 2);
       resetActors();
     }
     function resetActors(){
@@ -124,9 +142,9 @@ OE.register({
       ghosts = GHOSTS.map((d, i) => ({ ...d, x: i === 0 ? DOOR.x : 8 + (i - 1), y: i === 0 ? DOOR.y : HOME.y,
         fx: 0, fy: 0, dir: "left", p: 0, st: i === 0 ? "out" : "house", eaten: false }));
       ghosts.forEach(gh => { gh.fx = gh.x; gh.fy = gh.y; });
-      mode = "scatter"; modeT = 0; fright = 0; clock = 0; freeze = 1.2;
+      mode = "scatter"; modeT = 0; fright = 0; clock = 0; freeze = ctx.demo ? 0.3 : 1.2;
     }
-    function newGame(){ score = 0; lives = 3; level = 1; newLevel(); }
+    function newGame(){ score = 0; lives = S().lives; level = 1; playT = 0; best = ctx.store.get(bestKey(), 0); newLevel(); }
 
     // Geister dürfen durch die Tür, Spieler nicht
     function canGo(x, y, dir, ghost){
@@ -158,7 +176,44 @@ OE.register({
     }
     const pos = e => { const [dx, dy] = DIRS[e.dir]; return { x: e.x + dx * e.p, y: e.y + dy * e.p }; };
 
+    /* Vorführung: Breitensuche zum nächsten Punkt, Felder in Geisternähe
+       sind teuer; verängstigte Geister werden gejagt */
+    function bfs(sx, sy, block){
+      const d = grid.map(r => r.map(() => Infinity)), q = [[sx, sy]];
+      d[sy][sx] = 0;
+      while (q.length){
+        const [x, y] = q.shift();
+        for (const dir in DIRS){
+          if (!canGo(x, y, dir)) continue;
+          const nx = wrapX(x + DIRS[dir][0]), ny = y + DIRS[dir][1];
+          if (d[ny][nx] !== Infinity || (block && block(nx, ny))) continue;
+          d[ny][nx] = d[y][x] + 1; q.push([nx, ny]);
+        }
+      }
+      return d;
+    }
+    function aiDir(e){
+      const danger = ghosts.filter(gh => gh.st === "out" && !gh.scared).map(gh => bfs(gh.x, gh.y));
+      const prey = ghosts.filter(gh => gh.st === "out" && gh.scared);
+      const near = (x, y) => danger.reduce((m, d) => Math.min(m, d[y][x]), Infinity);
+      let best = null, bestS = Infinity;
+      for (const dir in DIRS){
+        if (!canGo(e.x, e.y, dir)) continue;
+        const nx = wrapX(e.x + DIRS[dir][0]), ny = e.y + DIRS[dir][1];
+        const gd = near(nx, ny);
+        // ab dem Nachbarfeld: nächster Punkt bzw. Geist, ohne Felder direkt vor einem Geist
+        const d = bfs(nx, ny, (x, y) => near(x, y) <= 1);
+        let goal = Infinity;
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (grid[y][x]) goal = Math.min(goal, d[y][x] - (grid[y][x] === 2 && gd < 6 ? 4 : 0));
+        for (const gh of prey) goal = Math.min(goal, d[gh.y][gh.x] - 3);
+        let sc = goal + (gd <= 1 ? 1000 : gd <= 3 ? 30 / gd : 0) + (dir === OPP[e.dir] ? 1.5 : 0);
+        if (sc < bestS){ bestS = sc; best = dir; }
+      }
+      return best;
+    }
+
     function choosePac(e){
+      if (ctx.demo){ const d = aiDir(e); if (d) e.want = d; }
       if (canGo(e.x, e.y, e.want)) return e.want;
       if (canGo(e.x, e.y, e.dir)) return e.dir;
       return null;
@@ -166,7 +221,7 @@ OE.register({
 
     function ghostTarget(gh){
       if (gh.st === "eyes") return DOOR;
-      if (fright > 0) return { x: ctx.rint(0, W - 1), y: ctx.rint(0, H - 1) };
+      if (fright > 0 || Math.random() < S().wander) return { x: ctx.rint(0, W - 1), y: ctx.rint(0, H - 1) };
       if (mode === "scatter") return { x: gh.corner[0], y: gh.corner[1] };
       const [dx, dy] = DIRS[pac.dir];
       if (gh.name === "blinky") return { x: pac.x, y: pac.y };
@@ -205,10 +260,11 @@ OE.register({
       else {
         score += 50; combo = 0;
         burst(x * ts + ts / 2, y * ts + ts / 2, "#c8ffd4", 16);
-        fright = Math.max(2, 7 - level);
+        fright = Math.max(stufe() === "schwer" ? 1.5 : 2, S().fr - level);
         ghosts.forEach(gh => { if (gh.st === "out"){ gh.reverse = true; gh.scared = true; } });
         ctx.beep(220, 160, "triangle", 0.05);
       }
+      if (stufe() === "leicht" && eatenDots >= goal) return win();
       if (dots === 0){
         state = "clear"; ctx.beep(1320, 300);
         ctx.log("OK", `chomp: Level ${level} geschafft — score ${score}`);
@@ -220,7 +276,7 @@ OE.register({
     function moveHouse(gh, dt){
       if (gh.st === "house"){
         gh.fy = HOME.y + Math.sin(clock * 6 + gh.release) * 0.25;
-        if (clock > gh.release / Math.max(1, level * 0.6)) gh.st = "leaving";
+        if (clock > gh.release * S().rel / Math.max(1, level * 0.6)) gh.st = "leaving";
         return;
       }
       if (gh.st === "leaving" || gh.st === "entering"){
@@ -258,7 +314,7 @@ OE.register({
       if (fright > 0){ fright -= dt; if (fright <= 0) ghosts.forEach(gh => gh.scared = false); }
       else {
         modeT += dt;
-        const len = mode === "scatter" ? 6 : 20;
+        const len = mode === "scatter" ? S().sc : S().ch;
         if (modeT > len){ modeT = 0; mode = mode === "scatter" ? "chase" : "scatter"; ghosts.forEach(gh => { if (gh.st === "out") gh.reverse = true; }); }
       }
 
@@ -275,12 +331,13 @@ OE.register({
       const pacSpeed = 7 + level * 0.25;
       advance(pac, pacSpeed, dt, choosePac);
       if (pac.p === 0 || pac.p > 0.5){ const pp = pos(pac); eatAt(Math.round(pp.x) % W, Math.round(pp.y)); }
+      if (state === "over") return;   // leicht: gerade gewonnen
       if (pac.moving) pac.mouth += dt * 14;
 
       for (const gh of ghosts){
         if (gh.st !== "out" && gh.st !== "eyes"){ moveHouse(gh, dt); continue; }
         const inTunnel = gh.y === 9 && (gh.x < 4 || gh.x > W - 5);
-        const sp = gh.st === "eyes" ? 14 : gh.scared ? 4 : inTunnel ? 3.5 : 6.4 + level * 0.3;
+        const sp = gh.st === "eyes" ? 14 : gh.scared ? (stufe() === "leicht" ? 3 : 4) : inTunnel ? 3.5 : S().gs + level * 0.3;
         advance(gh, sp, dt, chooseGhost);
         if (gh.st !== "entering"){ const gp = pos(gh); gh.fx = gp.x; gh.fy = gp.y; }
       }
@@ -313,11 +370,55 @@ OE.register({
       ctx.beep(140, 220, "sawtooth", 0.05);
       if (lives <= 0){
         state = "over";
-        if (score > best){ best = score; ctx.store.set("chomp.best", best); }
-        overlay(`<div class="big">GAME OVER</div><div>score ${score} · level ${level}</div>
+        if (score > best && stufe() !== "leicht"){ best = score; ctx.store.set(bestKey(), best); }
+        overlay(`<div class="big">GAME OVER</div><div>score ${score} · level ${level}</div>${lvBtn()}
           <div class="dim">${ctx.touch ? "tippen" : "ENTER"} = nochmal · ESC = exit</div>`);
       } else { resetActors(); state = "running"; }
     }
+
+    // leicht: halbes Feld leer gefressen – Jubel, Bestzeit
+    function win(){
+      state = "over";
+      const t = Math.round(playT * 10) / 10, rec = !best || t < best;
+      if (rec){ best = t; ctx.store.set(bestKey(), best); }
+      const pp = pos(pac);
+      burst(pp.x * ts + ts / 2, pp.y * ts + ts / 2, "#ffe066", 30);
+      [1046, 1318, 1568, 2093].forEach((f, i) => ctx.after(i * 110, () => ctx.beep(f, 120, "square", 0.04)));
+      confetti();
+      ctx.log("OK", `chomp: gewonnen in ${secs(t)}`);
+      overlay(`<div class="big">G E W O N N E N</div><div>${goal} punkte in ${secs(t)}${rec ? "  ★ bestzeit" : ""}</div>${lvBtn()}
+        <div class="dim">${ctx.touch ? "tippen" : "ENTER"} = nochmal · ${ctx.touch ? "" : "2 = normal · "}ESC = exit</div>`);
+    }
+    // Jubel: Punkte und Geisterfarben regnen übers Labyrinth
+    function confetti(){
+      if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      body.style.overflow = "hidden";
+      const h = body.clientHeight + 40, cols = ["#ffe066", "#ff5a5a", "#ff9ad5", "#5affe0", "#ffb454"];
+      for (let i = 0; i < 70; i++){
+        const s = document.createElement("span"), z = 6 + Math.random() * 10;
+        s.style.cssText = `position:absolute;left:${Math.random() * 100}%;top:-24px;width:${z}px;height:${z}px;border-radius:50%;pointer-events:none;z-index:3;` +
+          `background:${cols[i % cols.length]};box-shadow:0 0 10px ${cols[i % cols.length]}`;
+        body.appendChild(s);
+        s.animate([{ transform: "translate(0,0)", opacity: 1 }, { transform: `translate(${(Math.random() - 0.5) * 160}px,${h}px)`, opacity: 0.3 }],
+          { duration: 1600 + Math.random() * 1800, delay: Math.random() * 900, easing: "cubic-bezier(.3,.5,.6,1)", fill: "both" }).onfinish = () => s.remove();
+      }
+    }
+
+    /* Stufe wählen: 1/2/3 oder Knopf im Overlay / Statuszeile, nur außerhalb des Spiels */
+    const lvBtn = () => ctx.demo ? "" : `<button type="button" class="lv-pick" style="font:inherit;color:#ffe066;background:rgba(255,224,102,.08);` +
+      `border:1px solid rgba(255,224,102,.5);padding:6px 14px;margin:6px 0;cursor:pointer;touch-action:manipulation">stufe ‹ <b>${stufe()}</b> ›</button>` +
+      `<div class="dim">${{ leicht: "halbes feld = gewonnen · 5 leben · geister bummeln", normal: "alle punkte · 3 leben", schwer: "schnelle geister · kurze jagd" }[stufe()]}</div>`;
+    const titleHtml = () => `<div class="big">C H O M P</div><div>alle Punkte fressen · ◯ = Geister jagen</div>${lvBtn()}
+      <div class="dim">${ctx.touch ? "tippen zum Start · wischen zum Lenken" : "Pfeiltasten / WASD · ENTER = start · 1 2 3 = stufe"}</div>`;
+    function setLevel(v){
+      if (state === "running" || state === "dying" || state === "clear" || ctx.demo || v === lv.value) return;
+      lv.set(v); newGame(); state = "ready";
+      ctx.beep(520 + lv.index * 180, 60, "square", 0.03);
+      overlay(titleHtml());
+    }
+    ov.addEventListener("pointerdown", e => { if (e.target.closest(".lv-pick")) e.stopPropagation(); });
+    ov.addEventListener("click", e => { if (e.target.closest(".lv-pick")){ e.stopPropagation(); setLevel(lv.names[(lv.index + 1) % 3]); } });
+    bar.addEventListener("click", e => { if (e.target.closest(".lv")) setLevel(lv.names[(lv.index + 1) % 3]); });
 
     function overlay(html){ ov.hidden = !html; if (html) ov.innerHTML = html; }
 
@@ -377,8 +478,15 @@ OE.register({
         g.fillStyle = "#ffe066"; g.fillText("READY!", 9.5 * ts, 11.5 * ts);
       }
 
-      bar.innerHTML = `<span>score <b>${String(score).padStart(5, "0")}</b></span><span>best <b>${best}</b></span>
-        <span>level <b>${level}</b></span><span>leben <b style="color:#ffe066">${"◖".repeat(Math.max(0, lives))}</b></span>
+      const easy = stufe() === "leicht";
+      const html = `<span>score <b>${String(score).padStart(5, "0")}</b></span>` +
+        (easy ? `<span>ziel <b>${eatenDots}/${goal}</b></span>` : `<span>best <b>${best}</b></span><span>level <b>${level}</b></span>`) +
+        `<span class="lv" style="cursor:pointer">stufe <b>${stufe()}</b></span>`;
+      // nur bei Änderung neu schreiben (sonst geht der Klick auf "stufe" verloren)
+      const key = html + lives + (fright > 0) + mode;
+      if (key === barKey) return;
+      barKey = key;
+      bar.innerHTML = `${html}<span>leben <b style="color:#ffe066">${"◖".repeat(Math.max(0, lives))}</b></span>
         <span class="right">${fright > 0 ? "<b>JAGD!</b>" : mode === "chase" ? "geister jagen" : "geister zerstreut"}</span>`;
     }
 
@@ -468,7 +576,7 @@ OE.register({
 
     ctx.loop(dt => {
       const s = Math.min(dt, 50) / 1000;
-      if (state === "running") update(s);
+      if (state === "running"){ update(s); playT += s; }
       else {
         clock += s;
         if (state === "dying"){ dieT += s; if (dieT > 1.5) afterDeath(); }
@@ -484,8 +592,8 @@ OE.register({
     ]);
     ctx.swipe(body, () => begin());
     newGame();
-    overlay(`<div class="big">C H O M P</div><div>alle Punkte fressen · ◯ = Geister jagen</div>
-      <div class="dim">${ctx.touch ? "tippen zum Start · wischen zum Lenken" : "Pfeiltasten / WASD · ENTER = start"}</div>`);
+    if (ctx.demo){ state = "running"; overlay(null); }
+    else overlay(titleHtml());
 
     return {
       stop(){ removeEventListener("resize", size); },
@@ -499,6 +607,7 @@ OE.register({
           else if (state === "paused") begin();
           return true;
         }
+        if (k === "1" || k === "2" || k === "3"){ setLevel(lv.names[k - 1]); return true; }
         if (k === "q"){ ctx.exit(); return true; }
         return false;
       },

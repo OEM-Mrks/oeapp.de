@@ -14,10 +14,10 @@ live erzeugt, je Spiel ein eigener Track).
 
 | App        | Was                                                         |
 |------------|-------------------------------------------------------------|
-| `snake`    | Nokia-Klassiker (`snake --walls` mit tödlichen Rändern)     |
-| `blocks`   | Fallende Blöcke im ASCII-Look (Tetris-artig, eigener Code)  |
-| `pong`     | Tischtennis gegen den Computer (`pong --2p` zu zweit)       |
-| `chomp`    | Labyrinth mit vier Geistern (Pac-Man-artig, eigener Code)   |
+| `snake`    | Nokia-Klassiker, Stufen leicht/normal/schwer (1 2 3), leicht: 10 Futter = gewonnen |
+| `blocks`   | Fallende Blöcke (Tetris-artig), Stufen 1 2 3, leicht: 5 Reihen = gewonnen |
+| `pong`     | Tischtennis, Stufen 1 2 3, leicht bis 3 gegen müden Computer (`pong --2p` zu zweit) |
+| `chomp`    | Labyrinth mit vier Geistern (Pac-Man-artig), Stufen 1 2 3, leicht: halbes Feld = gewonnen |
 | `fixit`    | Fenster flicken, Ziegeln ausweichen (Hommage an Fix-It Felix Jr.) |
 | `tron`     | Lichtrad-Duell gegen 1–3 Computergegner (Tron, 1982), Stufen `--langsam`/`--schnell` |
 | `race`     | Pseudo-3D-Autorennen: 2 Runden ins Ziel, Stage 2 bei Nacht, Hupe (H), Polizei (C) |
