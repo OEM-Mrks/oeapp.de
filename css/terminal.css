@@ -244,6 +244,18 @@ pre.ascii{
 .run{ color:var(--green-bright); border-bottom:1px dashed currentColor; cursor:pointer; }
 .run:hover{ background:rgba(51,255,102,.15); }
 
+.botbar .log-seg{ cursor:pointer; }
+.botbar .log-seg.on{ background:var(--green); color:#000; text-shadow:none; }
+
+/* Vorführung: eine App spielt kurz selbst */
+.pane.main{ position:relative; }
+.demo-badge{
+  position:absolute; top:6px; right:10px; z-index:40; pointer-events:none;
+  padding:3px 10px; font-size:11px; letter-spacing:.12em; color:#000; background:var(--amber);
+  box-shadow:0 0 12px rgba(255,180,84,.6); animation:demo-pulse 1.2s steps(2) infinite;
+}
+@keyframes demo-pulse{ 50%{ opacity:.55; } }
+
 /* Cursor */
 .cursor{
   display:inline-block; width:8px; height:14px; vertical-align:-2px;

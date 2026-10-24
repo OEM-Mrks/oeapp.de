@@ -394,7 +394,7 @@ let nextPid = 2048;
 function register(app){ APPS.push(app); }
 function findApp(id){ return APPS.find(a => a.id === id || (a.alias || []).includes(id)); }
 
-function makeCtx(app, args){
+function makeCtx(app, args, demo = false){
   const el = $("#app");
   el.innerHTML = "";
   const timers = [], rafs = [];
@@ -533,6 +533,7 @@ function makeCtx(app, args){
       };
       return t;
     },
+    demo,                   // Vorführung: die App spielt selbst, ohne Ton und ohne Rekorde
     _cleanup(){ ctx.alive = false; timers.forEach(f => f()); rafs.forEach(id => cancelAnimationFrame(id)); },
   };
   return ctx;
@@ -551,16 +552,22 @@ function releaseKey(key){
   if (current) current.ctx.keys.delete(normKey(key));
 }
 
-function runApp(id, args = []){
+function runApp(id, args = [], demo = false){
   const app = findApp(id);
   if (!app) return false;
   if (current) stopCurrent();
-  const ctx = makeCtx(app, args);
-  current = { app, ctx, pid: nextPid++ };
+  const ctx = makeCtx(app, args, demo);
+  if (demo){
+    ctx.beep = () => {};
+    ctx.log = () => {};
+    ctx.store = { get: store.get, set(){} };
+  }
+  current = { app, ctx, pid: nextPid++, demo };
   document.body.classList.add("app-on");
   $("#mainTitle").innerHTML = `// ${esc(app.title || app.id)} &nbsp; ── &nbsp; <span class="hide-sm">pid ${current.pid} · </span>ESC = exit`;
   setActiveSeg(app.id);
-  addLine(fmt("OK", `exec <span class="path">/usr/local/oeapp/bin/${esc(app.id)}</span> <span class="dim">pid=${current.pid}</span>`));
+  logSeg();
+  if (logOn) addLine(fmt("OK", `exec <span class="path">/usr/local/oeapp/bin/${esc(app.id)}</span> <span class="dim">pid=${current.pid}</span>`));
   current.inst = app.start(ctx) || {};
   dispatchEvent(new CustomEvent("oe:app", { detail: app.id }));   // z. B. für die Musik
   if (document.activeElement === $("#cli")) $("#cli").blur();
@@ -572,17 +579,19 @@ function stopCurrent(){
   if (!current) return;
   try{ current.inst && current.inst.stop && current.inst.stop(); } catch(e){}
   current.ctx._cleanup();
-  addLine(fmt("DBG", `process <span class="path">${esc(current.app.id)}</span> exited <span class="dim">pid=${current.pid} status=0</span>`));
+  if (logOn) addLine(fmt("DBG", `process <span class="path">${esc(current.app.id)}</span> exited <span class="dim">pid=${current.pid} status=0</span>`));
   current = null;
   $("#app").innerHTML = "";
   dispatchEvent(new CustomEvent("oe:app", { detail: null }));
 }
 
 function exitApp(){
+  endDemo(false);
   stopCurrent();
   document.body.classList.remove("app-on");
   setTitle();
   setActiveSeg("log");
+  logSeg();
   log.scrollTop = log.scrollHeight;
   if (!TOUCH) $("#cli").focus();
   applyUpdate();   // ein wartendes Update erst nach dem Spiel einspielen
@@ -775,9 +784,11 @@ function initKeys(){
   document.addEventListener("keyup", e => { if (current) current.ctx.keys.delete(normKey(e.key)); });
   addEventListener("blur", () => { if (current) current.ctx.keys.clear(); });
   document.querySelectorAll(".botbar .seg[data-go]").forEach(s => s.addEventListener("click", () => go(s.dataset.go)));
+  $("#logSeg").addEventListener("click", logSegClick);
+  logSeg();
   // Handys haben keine F-Tasten: dort sprechendere Beschriftung
   if (TOUCH){
-    $('.botbar .seg[data-go="log"]').textContent = "◂ log";
+    $('.botbar .seg[data-go="log"]').style.display = "none";   // "zurück" übernimmt der Schalter rechts
     $('.botbar .seg[data-go="apps"]').textContent = "☰ apps";
   }
 }
@@ -840,39 +851,130 @@ const NUDGES = [
   a => `Psst … probier mal ${cmdLink(a.id)}.`,
   a => `Langweilig? Eine Runde ${cmdLink(a.id)} hilft.`,
   a => `Folge dem weißen Kaninchen: ${cmdLink(a.id)}.`,
+  a => `Mein Tipp für heute: ${cmdLink(a.id)}.`,
+  a => `Kleiner Vorschlag unter uns: ${cmdLink(a.id)}.`,
+];
+const CHATTER = [
+  "Die Matrix hat dich …",
+  "Ich sehe dich. Na ja, fast.",
+  "Hier drin läuft alles nur in deinem Browser. Kein Server liest mit.",
+  "Ich warte. Ich bin gut im Warten.",
+  "Es gibt keinen Löffel. Aber es gibt Apps.",
+  "Tipp: Mit ↑ holst du den letzten Befehl zurück.",
+  () => `Schon ${cmdLink("help")} probiert?`,
+  () => `Oder schau dem System bei der Arbeit zu: ${cmdLink("log")}.`,
+];
+const AFTER_DEMO = [
+  a => `Na, Lust bekommen? ${cmdLink(a.id)} – jetzt du.`,
+  a => `So sieht ${cmdLink(a.id)} aus. Selbst spielen ist besser.`,
+  a => `Das war nur die Vorführung. ${cmdLink(a.id)} gehört dir.`,
 ];
 let lastPick = null;
-function nudge(n){
-  if (n % 5 === 3) return `Oder schau dem System bei der Arbeit zu: ${cmdLink("log")}.`;
-  const pool = APPS.filter(a => !a.hidden && a.id !== "apps" && a.id !== lastPick);
+function pickApp(pool){
+  pool = pool.filter(a => !a.hidden && a.id !== "apps" && a.id !== lastPick);
   const a = rand(pool);
   lastPick = a.id;
-  return rand(NUDGES)(a);
+  return a;
 }
+const pickLine = l => typeof l === "function" ? l() : esc(l);
 
 async function greeter(){
-  let i = 0, n = 0;
+  let i = 0, n = 0, demos = 0, since = 0;
   lastMsg = Date.now();
   for (;;){
     const step = GREET[i];
-    // Abstand wächst mit jedem Vorschlag, damit es nicht nervt
-    const wait = step ? step.wait : Math.min(4000 + n * 3000, 25000);
+    // nach der Begrüßung: zufällige Abstände, die langsam länger werden
+    const wait = step ? step.wait : Math.min(rint(5000, 11000) + n * 700, 40000);
     const idle = () => Date.now() - Math.max(lastInput, lastMsg);
     while (halted || current || logOn || idle() < wait || document.activeElement === $("#cli") && $("#cli").value) await sleep(200);
+    if (!step && n >= 40) return;       // irgendwann ist auch mal gut
+    // Vorführung: früh die erste, danach ab und zu
+    const demoApps = APPS.filter(a => a.demo);
+    if (!step && demoApps.length && (n === 0 || (since >= 3 && Math.random() < 0.4))){
+      const a = pickApp(demoApps);
+      showTyping(); await sleep(900); if (!typingEl) continue; hideTyping();
+      await say(demos ? `Noch eine Vorführung: ${esc(a.id)}.` : `Ich zeig dir mal was. Vorführung: ${esc(a.id)}.`);
+      await sleep(700);
+      if (Date.now() - lastInput < 1500) continue;
+      demos++; n++; since = 0;
+      const played = await playDemo(a.id);
+      lastMsg = Date.now();
+      if (played){ await sleep(600); await say(rand(AFTER_DEMO)(a)); lastMsg = Date.now(); }
+      continue;
+    }
     showTyping();
     const until = Date.now() + 900 + Math.random() * 1100;
     while (typingEl && Date.now() < until) await sleep(80);
     if (!typingEl) continue;            // jemand hat getippt: der Server hört auf zu schreiben
     hideTyping();
-    await say(step ? step.msg() : nudge(n));
+    await say(step ? step.msg() : Math.random() < 0.25 ? pickLine(rand(CHATTER)) : rand(NUDGES)(pickApp(APPS)));
     lastMsg = Date.now();
-    if (step) i++; else n++;
+    if (step) i++; else { n++; since++; }
   }
+}
+
+/* -------- Vorführung --------
+   Eine App mit demo:true spielt 8 s lang selbst (ctx.demo), ohne Ton und
+   ohne Rekorde. Taste oder Tippen = selbst spielen (App startet frisch),
+   ESC oder Fußleiste = zurück zum Terminal. */
+const DEMO_MS = 8000;
+let demoRun = null;
+
+function playDemo(id){
+  return new Promise(res => {
+    if (!runApp(id, [], true)) return res(false);
+    document.body.classList.add("demo");
+    const badge = document.createElement("div");
+    badge.className = "demo-badge";
+    badge.innerHTML = `<b>DEMO</b> · ${TOUCH ? "tippen" : "Taste drücken"} = selbst spielen`;
+    $(".pane.main").appendChild(badge);
+    demoRun = { id, res, badge, timer: setTimeout(() => endDemo(true), DEMO_MS) };
+  });
+}
+// back: zurück zum Terminal (sonst läuft die App weiter bzw. wird neu gestartet)
+function endDemo(back){
+  if (!demoRun) return;
+  const d = demoRun; demoRun = null;
+  clearTimeout(d.timer);
+  d.badge.remove();
+  document.body.classList.remove("demo");
+  if (back) exitApp();
+  d.res(back);
+}
+function takeOver(){
+  const id = demoRun.id;
+  endDemo(false);
+  runApp(id);
+  if (logOn) addLine(fmt("OK", `${esc(id)}: Vorführung beendet, du bist dran.`));
+}
+addEventListener("keydown", e => {
+  if (!demoRun) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (e.key === "Escape") endDemo(true); else takeOver();
+}, { capture: true });
+addEventListener("pointerdown", e => {
+  if (!demoRun) return;
+  if (e.target.closest(".botbar")){ endDemo(true); return; }   // Klick geht dann normal weiter
+  e.preventDefault(); e.stopImmediatePropagation();
+  takeOver();
+}, { capture: true });
+
+/* Schalter unten rechts: in einer App = zurück zum Terminal, sonst Log an/aus */
+function logSeg(){
+  const el = $("#logSeg");
+  if (!el) return;
+  el.innerHTML = current && !current.demo ? "◂ zurück" : `log&nbsp;<b>${logOn ? "an" : "aus"}</b>`;
+  el.classList.toggle("on", logOn && !current);
+}
+function logSegClick(){
+  if (current){ exitApp(); return; }
+  setLog(!logOn);
 }
 
 async function setLog(on){
   logOn = on;
   setTitle();
+  logSeg();
   if (!on){ out(`<span class="dim">log angehalten — „log“ startet es wieder.</span>`); return; }
   quietUntil = 0;
   hideTyping();
