@@ -304,7 +304,24 @@ function sectionDivider(title){
 
 /* -------- QUOTE -------- */
 
+// Zitat-Box so hoch wie das längste Zitat, sonst springen beim Tippen die Kästen darunter auf und ab
+function sizeQuote(){
+  const txt = $("#qText");
+  if (!txt.offsetWidth) return;                       // Seitenleiste ausgeblendet (Handy, App läuft)
+  const m = txt.cloneNode(false);
+  m.removeAttribute("id");
+  m.style.cssText = `position:absolute; visibility:hidden; left:0; top:0; min-height:0; width:${txt.clientWidth}px`;
+  txt.parentNode.appendChild(m);
+  let h = 0;
+  for (const q of QUOTES){ m.innerHTML = `„${esc(q.t)}"<span class="cursor"></span>`; h = Math.max(h, m.offsetHeight); }
+  m.remove();
+  txt.style.minHeight = h + "px";
+}
+
 function initQuote(){
+  sizeQuote();
+  if (document.fonts) document.fonts.ready.then(sizeQuote);
+  let t; addEventListener("resize", () => { clearTimeout(t); t = setTimeout(sizeQuote, 150); });
   const q = pickQuote();
   $("#qLabel").textContent = q.tag.toUpperCase();
   $("#qText").textContent = `„${q.t}"`;

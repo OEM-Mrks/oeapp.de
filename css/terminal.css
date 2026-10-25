@@ -174,9 +174,9 @@ body{
 .quote .corner.tr{ top:-1px; right:-1px; border-top:2px solid; border-right:2px solid;}
 .quote .corner.bl{ bottom:-1px; left:-1px; border-bottom:2px solid; border-left:2px solid;}
 .quote .corner.br{ bottom:-1px; right:-1px; border-bottom:2px solid; border-right:2px solid;}
-.quote .label{ font-size:10px; color:var(--green-dim); letter-spacing:.2em; text-transform:uppercase; margin-bottom:10px;}
+.quote .label{ min-height:1.45em; font-size:10px; color:var(--green-dim); letter-spacing:.2em; text-transform:uppercase; margin-bottom:10px;}
 .quote .text{ font-size:15px; color:var(--green-bright); line-height:1.5; min-height:96px;}
-.quote .author{ margin-top:12px; font-size:12px; color:var(--green-dim); }
+.quote .author{ min-height:1.45em; margin-top:12px; font-size:12px; color:var(--green-dim); }
 .quote .author b{ color:var(--green); font-weight:500;}
 
 /* niedrige Fenster (iPad quer, kleine Laptops): rechts nur so viel, wie ganz draufpasst */
