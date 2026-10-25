@@ -3,6 +3,7 @@
   "short_name": "oeapp",
   "description": "Terminal-Demo mit Mini-Apps, läuft komplett im Browser.",
   "lang": "de",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

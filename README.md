@@ -42,6 +42,9 @@ live erzeugt, je Spiel ein eigener Track).
 - `fonts/` – IBM Plex Mono, lokal eingebunden (keine externen Requests)
 - `favicon.*`, `apple-touch-icon.png`, `icons/`, `manifest.webmanifest` – Icons für Browser-Tab,
   Home-Bildschirm (iPhone/Android) und App-Modus
+- `icons/splash/` – Startbilder für den App-Modus auf iPhone/iPad (je Gerät hoch und quer,
+  in `index.html` per `apple-touch-startup-image` verlinkt); Safe Areas (Notch, Home-Leiste)
+  stecken als `--sat/--sab/--sal/--sar` in `css/terminal.css`
 
 Neue App: Datei in `js/apps/` anlegen, `OE.register({ id, title, desc, start(ctx) })`
 aufrufen und in `index.html` einbinden. Sie taucht dann automatisch in `apps`

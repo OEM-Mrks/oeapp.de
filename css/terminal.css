@@ -31,6 +31,12 @@
   --gray:#5a8a66;
   --topbar-h: 34px;
   --botbar-h: 24px;
+  /* Notch/Dynamic Island und Home-Leiste (iPhone quer, App-Modus); braucht viewport-fit=cover */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  color-scheme: dark;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:var(--bg);height:100%;}
@@ -82,7 +88,8 @@ body{
   position:fixed; top:0; left:0; right:0;
   height:var(--topbar-h);
   display:flex; justify-content:space-between; align-items:center;
-  padding:0 16px;
+  --bar-x:16px;
+  padding:var(--sat) calc(var(--bar-x) + var(--sar)) 0 calc(var(--bar-x) + var(--sal));
   border-bottom:1px solid rgba(51,255,102,.25);
   background:rgba(0,0,0,.6);
   backdrop-filter: blur(2px);
@@ -90,8 +97,7 @@ body{
   color:var(--green-dim);
   z-index:10;
   letter-spacing:.04em;
-  padding-top:env(safe-area-inset-top, 0);
-  height:calc(var(--topbar-h) + env(safe-area-inset-top, 0));
+  height:calc(var(--topbar-h) + var(--sat));
 }
 .topbar .left, .topbar .right{display:flex; gap:18px; align-items:center; min-width:0;}
 .topbar b{color:var(--green); font-weight:500;}
@@ -107,9 +113,9 @@ body{
 /* Layout */
 .stage{
   position:fixed;
-  top:calc(var(--topbar-h) + env(safe-area-inset-top, 0));
-  left:0; right:0;
-  bottom:calc(var(--botbar-h) + env(safe-area-inset-bottom, 0));
+  top:calc(var(--topbar-h) + var(--sat));
+  left:var(--sal); right:var(--sar);
+  bottom:calc(var(--botbar-h) + var(--sab));
   display:grid;
   grid-template-columns: 1fr 380px;
   gap:1px;
@@ -230,8 +236,8 @@ pre.ascii{
 /* Bottom bar */
 .botbar{
   position:fixed; bottom:0; left:0; right:0;
-  height:calc(var(--botbar-h) + env(safe-area-inset-bottom, 0));
-  padding-bottom:env(safe-area-inset-bottom, 0);
+  height:calc(var(--botbar-h) + var(--sab));
+  padding:0 var(--sar) var(--sab) var(--sal);
   display:flex; align-items:center; gap:0;
   background:#000;
   border-top:1px solid rgba(51,255,102,.25);
@@ -285,7 +291,8 @@ pre.ascii{
 /* Boot screen */
 #boot{
   position:fixed; inset:0; background:#000; z-index:30;
-  padding:32px 40px;
+  --boot-y:32px; --boot-x:40px;
+  padding:calc(var(--boot-y) + var(--sat)) calc(var(--boot-x) + var(--sar)) calc(var(--boot-y) + var(--sab)) calc(var(--boot-x) + var(--sal));
   overflow:hidden;
 }
 #boot pre{
@@ -299,7 +306,7 @@ pre.ascii{
 @media (max-width: 900px){
   :root{ --topbar-h: 30px; --botbar-h: 22px; }
   body{ font-size:13px; }
-  .topbar{ font-size:11px; padding:0 10px; }
+  .topbar{ font-size:11px; --bar-x:10px; }
   .topbar .left, .topbar .right{ gap:10px; }
   .topbar .hide-sm{ display:none; }
   .stage{
@@ -315,13 +322,13 @@ pre.ascii{
   .botbar{ font-size:10px; }
   .botbar .seg{ padding:0 8px; }
   .botbar .seg.hide-sm{ display:none; }
-  #boot{ padding:18px 14px; }
+  #boot{ --boot-y:18px; --boot-x:14px; }
   #boot pre{ font-size:10.5px; }
 }
 
 @media (max-width: 480px){
   body{ font-size:12px; }
-  .topbar{ font-size:10px; padding:0 8px; }
+  .topbar{ font-size:10px; --bar-x:8px; }
   .topbar .left, .topbar .right{ gap:8px; }
   #log{ font-size:11px; line-height:1.4; }
   .pane h2{ font-size:9px; letter-spacing:.15em; }
@@ -457,7 +464,7 @@ body.app-on #app{ display:flex; flex-direction:column; }
 /* in den Kopien nichts animieren — sonst muss jede Kachel jedes Bild neu gemalt werden */
 .shatter *{ animation:none !important; transition:none !important; }
 .shard-inner{ position:absolute; left:0; top:0; }
-.halt{ position:fixed; inset:0; z-index:45; background:#000; padding:14px 16px; }
+.halt{ position:fixed; inset:0; z-index:45; background:#000; padding:calc(14px + var(--sat)) calc(16px + var(--sar)) 14px calc(16px + var(--sal)); }
 .halt .cursor{ width:10px; height:18px; }
 
 /* =============================================================
@@ -555,19 +562,29 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 /* Layout folgt dem sichtbaren Bereich (Bildschirmtastatur), Werte setzt core.js */
 .vv .topbar{ top:var(--vvt, 0px); }
 .vv .stage{
-  top:calc(var(--vvt, 0px) + var(--topbar-h) + env(safe-area-inset-top, 0px));
+  top:calc(var(--vvt, 0px) + var(--topbar-h) + var(--sat));
   bottom:auto;
-  height:calc(var(--vvh, 100%) - var(--topbar-h) - env(safe-area-inset-top, 0px) - var(--botbar-h) - env(safe-area-inset-bottom, 0px));
+  height:calc(var(--vvh, 100%) - var(--topbar-h) - var(--sat) - var(--botbar-h) - var(--sab));
 }
-.vv .botbar{ bottom:auto; top:calc(var(--vvt, 0px) + var(--vvh, 100%) - var(--botbar-h) - env(safe-area-inset-bottom, 0px)); }
+.vv .botbar{ bottom:auto; top:calc(var(--vvt, 0px) + var(--vvh, 100%) - var(--botbar-h) - var(--sab)); }
 /* Tastatur offen: Fußleiste weg, die Fläche gehört der Eingabe */
 .vv.kbd .botbar{ display:none; }
-.vv.kbd .stage{ height:calc(var(--vvh, 100%) - var(--topbar-h) - env(safe-area-inset-top, 0px)); }
+.vv.kbd .stage{ height:calc(var(--vvh, 100%) - var(--topbar-h) - var(--sat)); }
 
 /* Fußleiste: große Tippflächen */
 .touch .botbar{ font-size:13px; }
 .touch .botbar .seg{ padding:0 16px; }
 .touch .botbar .seg[data-go]{ min-width:84px; justify-content:center; }
+/* Hover bleibt auf Touch nach dem Tippen kleben; stattdessen sofort sichtbares Feedback beim Drücken */
+.touch .botbar .seg[data-go]:hover{ color:inherit; }
+.touch .botbar .seg[data-go]:active:not(.active), .touch .botbar .log-seg:active:not(.on){ background:rgba(51,255,102,.22); }
+.touch .run:hover{ background:none; }
+.touch .run:active{ background:rgba(51,255,102,.25); }
+.touch .tty-chips button:hover:not(:disabled){ background:#000; }
+.touch .dos-key:hover{ background:#000; color:var(--d-cy); }
+.touch .dos-key:active:not(.off){ background:var(--d-cy); color:#000; }
+/* Apple-Richtlinie: Tippziele mindestens 44 × 44 pt */
+.touch .dos-key{ min-height:44px; padding:6px 10px; font-size:13px; }
 
 /* Ohne Flackern und Scanline-Überblendung: kostet auf dem Handy pro Bild die ganze Seite */
 .touch.app-on{ animation:none; }
@@ -575,7 +592,8 @@ html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 
 /* App-Auswahl: Zeilen groß genug für Finger */
 .touch .menu{ -webkit-overflow-scrolling:touch; }
-.touch .menu .item{ padding:9px 6px; align-items:center; }
+.touch .menu .item{ padding:9px 6px; align-items:center; min-height:44px; }
+.touch .menu .item:active{ background:rgba(51,255,102,.22); }
 .touch .menu .item:hover:not(.sel){ background:none; color:inherit; text-shadow:inherit; }
 .touch .menu .item:hover:not(.sel) .name{ color:var(--green-bright); }
 .touch .menu .item:hover:not(.sel) .desc{ color:var(--green-dim); }
